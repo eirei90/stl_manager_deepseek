@@ -6,6 +6,8 @@
 import threading
 import logging
 from typing import Callable, Optional
+from pathlib import Path
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -19,26 +21,21 @@ class CancellationToken:
 
     @property
     def is_cancelled(self) -> bool:
-        """Проверяет, отменена ли операция."""
         with self._lock:
             return self._cancelled
 
     def cancel(self):
-        """Отменяет операцию."""
         with self._lock:
             self._cancelled = True
             logger.info("Операция отменена пользователем")
 
     def reset(self):
-        """Сбрасывает токен для повторного использования."""
         with self._lock:
             self._cancelled = False
 
 
 class BackgroundTask(threading.Thread):
-    """
-    Базовый класс для фоновой задачи с поддержкой отмены.
-    """
+    """Базовый класс для фоновой задачи с поддержкой отмены."""
 
     def __init__(
         self,
@@ -57,15 +54,10 @@ class BackgroundTask(threading.Thread):
         self._on_cancelled = on_cancelled
         self._result = None
         self._error = None
-        self._cancelled = False
-
-        # Используем переданный токен или создаём новый
         self.cancellation_token = cancellation_token or CancellationToken()
 
     def run(self):
-        """Выполняет задачу с проверкой отмены."""
         try:
-            # Передаём токен и колбэк прогресса в целевую функцию
             self._result = self._target(self._report_progress, self.cancellation_token)
 
             if self.cancellation_token.is_cancelled:
@@ -86,12 +78,10 @@ class BackgroundTask(threading.Thread):
                     self._on_error(str(e))
 
     def _report_progress(self, current: int, total: int):
-        """Безопасно сообщает о прогрессе в главный поток."""
         if self._on_progress and not self.cancellation_token.is_cancelled:
             self._on_progress(current, total)
 
     def cancel(self):
-        """Запрашивает отмену операции."""
         self.cancellation_token.cancel()
         logger.info("Запрошена отмена операции")
 
@@ -105,7 +95,7 @@ class BackgroundTask(threading.Thread):
 
 
 class ScanWorker(BackgroundTask):
-    """Поток для сканирования директории с поддержкой отмены."""
+    """Поток для сканирования директории."""
 
     def __init__(self, scanner, root_path: str, **kwargs):
         self.scanner = scanner
@@ -118,7 +108,7 @@ class ScanWorker(BackgroundTask):
 
 
 class RenderWorker(BackgroundTask):
-    """Поток для пакетного рендеринга превью с поддержкой отмены."""
+    """Поток для пакетного рендеринга превью."""
 
     def __init__(self, renderer, db, project_id: int, **kwargs):
         self.renderer = renderer
@@ -131,53 +121,124 @@ class RenderWorker(BackgroundTask):
         super().__init__(target=render_target, **kwargs)
 
     def _batch_render(self, progress_cb, cancel_token) -> int:
-        """Рендерит превью для всех файлов проекта с проверкой отмены."""
-        from pathlib import Path
-
+        """Рендерит превью для всех файлов проекта."""
         files = self.db.get_files_for_project(self.project_id)
         total = len(files)
         rendered = 0
+        skipped = 0
+        errors = 0
+
+        logger.info(f"=" * 50)
+        logger.info(f"Начинаем рендеринг {total} файлов")
+        logger.info(f"=" * 50)
 
         for idx, file_record in enumerate(files, 1):
             # Проверяем отмену
             if cancel_token.is_cancelled:
-                logger.info(f"Рендеринг прерван пользователем. Обработано: {rendered}/{total}")
+                logger.info(f"Рендеринг прерван. Обработано: {rendered}/{total}")
                 break
 
+            # Распаковываем данные файла
+            # Индексы: 0:id, 1:file_name, 2:file_path, 3:file_size, 4:modified_date,
+            #          5:face_count, 6:bbox_x, 7:bbox_y, 8:bbox_z, 9:volume,
+            #          10:surface_area, 11:is_valid, 12:has_thumbnail, 13:thumbnail_path
             file_id = file_record[0]
+            file_name = file_record[1]
             file_path = file_record[2]
+            is_valid = file_record[11] if len(file_record) > 11 else 1
 
-            # Пропускаем файлы из архивов (у них путь начинается с [ARCHIVE])
-            if file_path.startswith("[ARCHIVE]"):
+            # Пропускаем невалидные
+            if not is_valid:
+                logger.debug(f"[{idx}/{total}] Пропущен (невалидный): {file_name}")
+                skipped += 1
                 if progress_cb:
                     progress_cb(idx, total)
                 continue
 
+            # Пропускаем файлы из архивов
+            if file_path.startswith("[ARCHIVE]"):
+                logger.debug(f"[{idx}/{total}] Пропущен (архив): {file_name}")
+                skipped += 1
+                if progress_cb:
+                    progress_cb(idx, total)
+                continue
+
+            # Проверяем существование файла
             stl_path = Path(file_path)
             if not stl_path.exists():
-                logger.warning(f"Файл не найден: {file_path}")
+                logger.warning(f"[{idx}/{total}] Файл не найден: {file_path}")
+                skipped += 1
                 if progress_cb:
                     progress_cb(idx, total)
                 continue
 
+            # Создаём директорию .thumbs рядом с файлом
             thumb_dir = stl_path.parent / ".thumbs"
-            thumb_dir.mkdir(exist_ok=True)
+            try:
+                thumb_dir.mkdir(exist_ok=True, parents=True)
+            except PermissionError:
+                # Если нет прав на создание .thumbs, сохраняем рядом
+                thumb_dir = stl_path.parent
+                logger.warning(f"Нет прав на создание .thumbs, сохраняем рядом с файлом")
+            except Exception as e:
+                logger.error(f"Ошибка создания директории {thumb_dir}: {e}")
+                errors += 1
+                if progress_cb:
+                    progress_cb(idx, total)
+                continue
+
             thumb_path = thumb_dir / f"{stl_path.stem}.jpg"
 
-            # Рендерим
-            success = self.renderer.render_to_jpeg(
-                str(stl_path),
-                str(thumb_path)
-            )
+            # Логируем
+            logger.info(f"[{idx}/{total}] Рендеринг: {file_name}")
+            logger.debug(f"  STL: {stl_path}")
+            logger.debug(f"  JPG: {thumb_path}")
 
-            if not success:
-                self.renderer.create_error_placeholder(str(thumb_path))
-            
-            # Сохраняем информацию о превью в БД
-            self.db.update_thumbnail_status(file_id, str(thumb_path))
-            
-            rendered += 1
+            # Рендерим
+            try:
+                success = self.renderer.render_to_jpeg(
+                    str(stl_path),
+                    str(thumb_path)
+                )
+
+                if success:
+                    # Проверяем что файл создался
+                    if thumb_path.exists() and thumb_path.stat().st_size > 100:
+                        # Сохраняем в БД
+                        self.db.update_thumbnail_status(file_id, str(thumb_path))
+                        rendered += 1
+                        logger.info(f"  ✅ Успешно! ({rendered} всего)")
+                    else:
+                        logger.warning(f"  ⚠ Файл превью слишком маленький")
+                        self.renderer.create_error_placeholder(str(thumb_path))
+                        self.db.update_thumbnail_status(file_id, str(thumb_path))
+                        errors += 1
+                else:
+                    logger.warning(f"  ❌ Рендеринг вернул False")
+                    # Создаём заглушку
+                    self.renderer.create_error_placeholder(str(thumb_path))
+                    self.db.update_thumbnail_status(file_id, str(thumb_path))
+                    errors += 1
+
+            except Exception as e:
+                logger.error(f"  ❌ Исключение: {e}", exc_info=True)
+                try:
+                    self.renderer.create_error_placeholder(str(thumb_path))
+                    self.db.update_thumbnail_status(file_id, str(thumb_path))
+                except:
+                    pass
+                errors += 1
+
+            # Обновляем прогресс
             if progress_cb:
                 progress_cb(idx, total)
-        
+
+        # Итоги
+        logger.info(f"=" * 50)
+        logger.info(f"Рендеринг завершён:")
+        logger.info(f"  ✅ Успешно: {rendered}")
+        logger.info(f"  ⏭ Пропущено: {skipped}")
+        logger.info(f"  ❌ Ошибок: {errors}")
+        logger.info(f"=" * 50)
+
         return rendered

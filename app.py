@@ -7,59 +7,82 @@ STL Manager - Приложение для управления коллекци�
 import sys
 from pathlib import Path
 
+# Добавляем корень проекта в PYTHONPATH
 sys.path.insert(0, str(Path(__file__).parent))
 
-from models import Database
+from models.database import Database
 from services.scanner import STLScanner
-from services.renderer import STLRenderer, SimpleRenderer
-from ui import STLManagerApp
-from utils import logger
+from services.renderer import STLRenderer
+from ui.main_window import STLManagerApp
+from utils.logger import logger
 
 
 def main():
     """Главная функция запуска приложения."""
     try:
-        logger.info("=" * 50)
-        logger.info("Запуск STL Manager")
-        logger.info("=" * 50)
-        
-        # Инициализация слоя данных
+        logger.info("=" * 60)
+        logger.info("  STL Manager - запуск приложения")
+        logger.info("=" * 60)
+
+        # Инициализация базы данных
+        logger.info("Инициализация базы данных...")
         db = Database("stl_catalog.db")
-        
-        # Инициализация сервисов
+        logger.info("База данных готова")
+
+        # Инициализация сканера
+        logger.info("Инициализация сканера...")
         scanner = STLScanner(db)
-        
-        # Инициализация рендерера с fallback
+        logger.info("Сканер готов")
+
+        # Инициализация рендерера
+        logger.info("Инициализация рендерера...")
         renderer = None
+
         try:
             renderer = STLRenderer()
-            logger.info("Рендерер (vedo+VTK) успешно инициализирован")
-        except (RuntimeError, Exception) as e:
-            logger.warning(f"Не удалось инициализировать основной рендерер: {e}")
-            logger.info("Пробуем упрощённый рендерер (matplotlib)...")
-            try:
-                renderer = SimpleRenderer()
-                logger.info("Упрощённый рендерер инициализирован")
-                print("⚠️  Используется упрощённый рендерер (качество превью будет ниже)")
-            except Exception as e2:
-                logger.error(f"Не удалось инициализировать даже упрощённый рендерер: {e2}")
-                print("❌ Рендеринг недоступен. Установите одно из: vtk, matplotlib+trimesh")
-        
+            logger.info(f"Рендерер готов (метод: {renderer.method})")
+        except RuntimeError as e:
+            logger.error(f"Ошибка инициализации рендерера: {e}")
+            print(f"\n❌ Ошибка: {e}")
+            print("\nДля рендеринга STL в изображения установите один из вариантов:")
+            print("  1. vedo + vtk (рекомендуется):")
+            print("     pip install vedo vtk")
+            print("  2. matplotlib + trimesh (запасной):")
+            print("     pip install matplotlib trimesh")
+            print("  3. Только Pillow (будут создаваться заглушки):")
+            print("     pip install Pillow trimesh")
+            print("\nПриложение будет запущено без возможности рендеринга.")
+            print("Вы сможете сканировать и каталогизировать файлы, но без превью.\n")
+
+            # Пробуем запустить без рендерера
+            renderer = None
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка рендерера: {e}")
+            print(f"\n⚠️ Предупреждение: {e}")
+            print("Рендеринг может быть недоступен.\n")
+            renderer = None
+
         # Запуск GUI
+        logger.info("Запуск графического интерфейса...")
         app = STLManagerApp(db, scanner, renderer)
-        
+
         # Обработка закрытия окна
         app.protocol("WM_DELETE_WINDOW", app.on_closing)
-        
-        logger.info("Главное окно запущено")
+
+        logger.info("Главное окно открыто")
+        print("✅ Приложение запущено. Закройте окно для выхода.")
+
+        # Запуск главного цикла
         app.mainloop()
-        
+
     except KeyboardInterrupt:
-        logger.info("Приложение остановлено пользователем")
+        logger.info("Приложение остановлено пользователем (Ctrl+C)")
+        print("\n⏹ Приложение остановлено.")
         sys.exit(0)
     except Exception as e:
         logger.critical(f"Критическая ошибка: {e}", exc_info=True)
-        print(f"Критическая ошибка: {e}")
+        print(f"\n❌ Критическая ошибка: {e}")
+        print("Проверьте лог-файл stl_manager.log для подробностей.")
         sys.exit(1)
 
 

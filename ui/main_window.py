@@ -493,7 +493,7 @@ class STLManagerApp(ctk.CTk):
                 text_color="gray"
             )
             empty_label.pack(padx=20, pady=50)
-            self.status_bar.configure(text="Файлы не найдены | Шрифт: " + FONT_FAMILY)
+            self.status_bar.configure(text="Файлы не найдены")
             return
 
         from ui.cards import FileCard
@@ -517,22 +517,17 @@ class STLManagerApp(ctk.CTk):
                 card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             except Exception as e:
                 logger.error(f"Ошибка создания карточки: {e}")
-                error_card = ctk.CTkFrame(self.cards_frame, corner_radius=10, fg_color="darkred")
-                error_label = ctk.CTkLabel(
-                    error_card,
-                    text=f"Ошибка загрузки\n{str(e)[:100]}",
-                    font=self.small_font,
-                    wraplength=180
-                )
-                error_label.pack(padx=10, pady=10)
-                error_card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
             col += 1
             if col >= max_cols:
                 col = 0
                 row += 1
 
-        self.status_bar.configure(text=f"Отображено файлов: {len(files)} | Шрифт: {FONT_FAMILY}")
+        # Считаем файлы с превью
+        files_with_thumb = sum(1 for f in files if f[12] == 1)  # has_thumbnail
+        self.status_bar.configure(
+            text=f"Файлов: {len(files)} | С превью: {files_with_thumb} | Шрифт: {FONT_FAMILY}"
+        )
 
     def _open_file_location(self, file_path: str):
         """Открывает расположение файла."""
