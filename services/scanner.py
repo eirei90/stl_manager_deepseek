@@ -158,13 +158,15 @@ class STLScanner:
 
         return stl_files
 
-    def scan_directory(self, root_path: str, progress_callback=None) -> int:
+    def scan_directory(self, root_path: str, progress_callback=None, cancel_token=None) -> int:
         """
         Рекурсивно сканирует директорию, включая архивы.
+        Поддерживает отмену через CancellationToken.
 
         Args:
             root_path: Корневая папка для сканирования
             progress_callback: Функция(current, total) для обновления прогресса
+            cancel_token: Токен для отмены операции (CancellationToken)
 
         Returns:
             project_id: ID проекта в БД
@@ -172,7 +174,7 @@ class STLScanner:
         root_path = str(Path(root_path).resolve())
         project_id = self.db.add_project(root_path)
 
-        # Собираем список всех STL-файлов (включая из архивов)
+        # Собираем список всех STL-файлов
         logger.info(f"Начинаем сканирование: {root_path}")
         stl_files = self._find_stl_files(root_path)
 
@@ -181,14 +183,17 @@ class STLScanner:
 
         # Обрабатываем каждый файл
         for idx, file_path in enumerate(stl_files, 1):
+            # Проверяем отмену
+            if cancel_token and cancel_token.is_cancelled:
+                logger.info(f"Сканирование прервано пользователем. Обработано: {idx - 1}/{total}")
+                break
+
             try:
                 metadata = self.parse_stl_metadata(file_path)
 
-                # Проверяем, не является ли файл временным (из архива)
                 is_temp = hasattr(self, '_temp_files') and file_path in self._temp_files
 
                 if is_temp:
-                    # Для файлов из архивов добавляем пометку в путь
                     original_name = Path(file_path).name
                     metadata['file_path'] = f"[ARCHIVE] {original_name}"
                     logger.debug(f"Обработан файл из архива: {original_name}")
