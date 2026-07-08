@@ -1,0 +1,29 @@
+2026-07-08 10:20:56,588 [INFO] STLManager: ==================================================
+2026-07-08 10:20:56,588 [INFO] STLManager: Запуск STL Manager
+2026-07-08 10:20:56,588 [INFO] STLManager: ==================================================
+2026-07-08 10:20:56,606 [INFO] models.database: База данных инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-08 10:20:56,931 [INFO] services.renderer: VTK backend доступен для headless-рендеринга
+2026-07-08 10:20:56,932 [INFO] STLManager: Рендерер успешно инициализирован
+2026-07-08 10:20:57,075 [INFO] ui.main_window: Главное окно создано
+2026-07-08 10:20:57,075 [INFO] STLManager: Главное окно запущено
+2026-07-08 10:21:40,688 [INFO] STLManager: ==================================================
+2026-07-08 10:21:40,688 [INFO] STLManager: Запуск STL Manager
+2026-07-08 10:21:40,688 [INFO] STLManager: ==================================================
+2026-07-08 10:21:40,689 [INFO] models.database: База данных инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-08 10:21:40,968 [INFO] services.renderer: VTK backend доступен для headless-рендеринга
+2026-07-08 10:21:40,969 [INFO] STLManager: Рендерер (vedo+VTK) успешно инициализирован
+2026-07-08 10:21:41,123 [INFO] ui.main_window: Главное окно создано
+2026-07-08 10:21:41,124 [INFO] STLManager: Главное окно запущено
+2026-07-08 10:23:05,042 [INFO] STLManager: ==================================================
+2026-07-08 10:23:05,042 [INFO] STLManager: Запуск STL Manager
+2026-07-08 10:23:05,042 [INFO] STLManager: ==================================================
+2026-07-08 10:23:05,043 [INFO] models.database: База данных инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-08 10:23:05,301 [INFO] services.renderer: VTK backend доступен для headless-рендеринга
+2026-07-08 10:23:05,301 [INFO] STLManager: Рендерер (vedo+VTK) успешно инициализирован
+2026-07-08 10:23:05,388 [INFO] ui.main_window: Главное окно создано
+2026-07-08 10:23:05,388 [INFO] STLManager: Главное окно запущено
+2026-07-08 10:29:17 [INFO] STLManager: ==================================================
+2026-07-08 10:29:17 [INFO] STLManager: Запуск STL Manager
+2026-07-08 10:29:17 [INFO] STLManager: ==================================================
+2026-07-08 10:29:17 [INFO] STLManager: Рендерер (vedo+VTK) успешно инициализирован
+2026-07-08 10:29:17 [INFO] STLManager: Главное окно запущено

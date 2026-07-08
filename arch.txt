@@ -1,0 +1,24 @@
+stl_manager/
+├── app.py                 # Точка входа, запуск приложения
+├── requirements.txt       # Зависимости
+├── stl_catalog.db         # SQLite база данных (создаётся автоматически)
+│
+├── models/                # Слой данных (Model)
+│   ├── __init__.py
+│   ├── database.py        # Схема БД, подключение, CRUD операции
+│   └── entities.py        # Классы-сущности (FileRecord и т.д.)
+│
+├── services/              # Слой бизнес-логики
+│   ├── __init__.py
+│   ├── scanner.py         # Рекурсивный обход, парсинг STL, извлечение метаданных
+│   └── renderer.py        # Headless рендеринг STL в JPEG
+│
+├── ui/                    # Слой представления (View + Controller)
+│   ├── __init__.py
+│   ├── main_window.py     # Главное окно, компоновка виджетов
+│   ├── cards.py           # Виджет карточки STL-файла
+│   └── workers.py         # Потоки для фоновых операций (QThread аналоги на threading)
+│
+└── utils/                 # Вспомогательные утилиты
+    ├── __init__.py
+    └── logger.py          # Настройка логирования
