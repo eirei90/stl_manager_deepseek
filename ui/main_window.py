@@ -389,12 +389,30 @@ class STLManagerApp(ctk.CTk):
 
     def start_render_all(self):
         """Запускает рендеринг всех превью."""
+        print("\n" + "=" * 50)
+        print("КНОПКА 'Создать превью' НАЖАТА")
+        print("=" * 50)
+
         if not self.current_project_id:
+            print("❌ Нет current_project_id")
             messagebox.showwarning("Предупреждение", "Сначала выполните сканирование!")
             return
 
         if not self.renderer:
+            print("❌ Рендерер не инициализирован")
             messagebox.showwarning("Предупреждение", "Рендерер недоступен!")
+            return
+
+        print(f"✅ project_id: {self.current_project_id}")
+        print(f"✅ renderer: {self.renderer}")
+        print(f"✅ метод рендеринга: {self.renderer.method}")
+
+        # Проверяем количество файлов в БД
+        files = self.db.get_files_for_project(self.current_project_id)
+        print(f"✅ Файлов в БД: {len(files)}")
+
+        if len(files) == 0:
+            messagebox.showwarning("Предупреждение", "Нет файлов для рендеринга!")
             return
 
         self._set_ui_state("rendering")
@@ -403,6 +421,7 @@ class STLManagerApp(ctk.CTk):
 
         cancel_token = CancellationToken()
 
+        print("Создание RenderWorker...")
         self.render_worker = RenderWorker(
             renderer=self.renderer,
             db=self.db,
@@ -414,14 +433,25 @@ class STLManagerApp(ctk.CTk):
             on_cancelled=self._on_render_cancelled
         )
         self.current_worker = self.render_worker
+
+        print("Запуск потока рендеринга...")
         self.render_worker.start()
+        print("Поток запущен!\n")
 
     def _on_render_progress(self, current: int, total: int):
         """Обновление прогресса рендеринга."""
-        self.after(0, lambda: self._update_progress(current, total, "Рендеринг"))
+        print(f"  Прогресс рендеринга: {current}/{total}")
+        self.after(0, lambda: self._update_render_progress(current, total))
+
+    def _update_render_progress(self, current: int, total: int):
+        """Безопасное обновление прогресса рендеринга."""
+        if total > 0:
+            self.progress_bar.set(current / total)
+        self.lbl_progress.configure(text=f"Создание превью: {current}/{total}")
 
     def _on_render_complete(self, rendered_count: int):
         """Завершение рендеринга."""
+        print(f"\n✅ Рендеринг завершён! Создано превью: {rendered_count}")
         self.after(0, lambda: self._finish_render(rendered_count))
 
     def _finish_render(self, rendered_count: int):
@@ -432,14 +462,23 @@ class STLManagerApp(ctk.CTk):
         self.refresh_file_list()
         self.current_worker = None
         self._set_ui_state("idle")
-        logger.info(f"Рендеринг завершён: {rendered_count} файлов")
 
     def _on_render_error(self, error_msg: str):
         """Ошибка рендеринга."""
-        self.after(0, lambda: self._handle_operation_error("рендеринга", error_msg))
+        print(f"\n❌ Ошибка рендеринга: {error_msg}")
+        self.after(0, lambda: self._handle_render_error(error_msg))
+
+    def _handle_render_error(self, error_msg: str):
+        """Безопасная обработка ошибки рендеринга."""
+        self.lbl_progress.configure(text="Ошибка создания превью!")
+        self.status_bar.configure(text=f"Ошибка: {error_msg}")
+        messagebox.showerror("Ошибка", f"Не удалось создать превью:\n{error_msg}")
+        self.current_worker = None
+        self._set_ui_state("idle")
 
     def _on_render_cancelled(self):
         """Рендеринг отменён."""
+        print("\n⏹ Рендеринг отменён")
         self.after(0, lambda: self._handle_cancelled("Рендеринг"))
 
     def stop_operation(self):
@@ -558,6 +597,11 @@ class STLManagerApp(ctk.CTk):
 
     def _set_ui_state(self, state: str):
         """Управляет состоянием кнопок."""
+        print(f"\n[_set_ui_state] Состояние: {state}")
+        print(f"  current_root_path: {self.current_root_path}")
+        print(f"  current_project_id: {self.current_project_id}")
+        print(f"  renderer: {self.renderer}")
+
         if state == "scanning" or state == "rendering":
             self.btn_select_folder.configure(state="disabled")
             self.btn_scan.configure(state="disabled")
@@ -569,15 +613,20 @@ class STLManagerApp(ctk.CTk):
                 hover_color="#B71C1C"
             )
             self.btn_apply_filter.configure(state="disabled")
+            print("  Кнопки: выбор/скан/рендер/фильтр - disabled, стоп - enabled")
         else:  # idle
             self.btn_select_folder.configure(state="normal")
             self.btn_scan.configure(state="normal" if self.current_root_path else "disabled")
-            if self.current_project_id and self.renderer:
-                self.btn_render.configure(state="normal")
-            else:
-                self.btn_render.configure(state="disabled")
+
+            # Проверяем, можно ли включить кнопку рендеринга
+            can_render = bool(self.current_project_id and self.renderer)
+            self.btn_render.configure(state="normal" if can_render else "disabled")
+
             self.btn_stop.configure(state="disabled", text="⏹ Остановить")
             self.btn_apply_filter.configure(state="normal")
+
+            print(f"  Кнопки: рендер={'normal' if can_render else 'disabled'}")
+            print(f"    project_id={self.current_project_id}, renderer={bool(self.renderer)}")
 
     def on_closing(self):
         """Действия при закрытии окна."""
