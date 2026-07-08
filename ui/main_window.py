@@ -565,10 +565,19 @@ class STLManagerApp(ctk.CTk):
 
     def refresh_file_list(self):
         """Обновляет список карточек файлов."""
+        # Очищаем текущие карточки
         for widget in self.cards_frame.winfo_children():
             widget.destroy()
 
         if not self.current_project_id:
+            # Показываем сообщение, что файлы не найдены
+            empty_label = ctk.CTkLabel(
+                self.cards_frame,
+                text="Нет файлов для отображения.\nВыполните сканирование папки.",
+                font=self.normal_font,
+                text_color="gray"
+            )
+            empty_label.pack(padx=20, pady=50)
             return
 
         name_filter = self.search_var.get().strip() or None
@@ -590,31 +599,64 @@ class STLManagerApp(ctk.CTk):
             max_faces=max_faces
         )
 
+        # Если файлы не найдены
+        if not files:
+            empty_label = ctk.CTkLabel(
+                self.cards_frame,
+                text="Файлы не найдены.\nПопробуйте изменить параметры фильтрации.",
+                font=self.normal_font,
+                text_color="gray"
+            )
+            empty_label.pack(padx=20, pady=50)
+            self.status_bar.configure(text="Файлы не найдены | Шрифт: " + FONT_FAMILY)
+            return
+
+        # Импортируем класс карточки
         from ui.cards import FileCard
 
         row = 0
         col = 0
         max_cols = 3
 
-        for file_data in files:
-            card = FileCard(
-                self.cards_frame,
-                file_data=file_data,
-                on_open=self._open_file_location,
-                font_family=FONT_FAMILY,
-                font_size=FONT_SIZE
-            )
-            card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
-
-            col += 1
-            if col >= max_cols:
-                col = 0
-                row += 1
-
+        # Настраиваем сетку для карточек
         for i in range(max_cols):
-            self.cards_frame.grid_columnconfigure(i, weight=1)
+            self.cards_frame.grid_columnconfigure(i, weight=1, uniform="card_col")
+
+        for file_data in files:
+            try:
+                card = FileCard(
+                    self.cards_frame,
+                    file_data=file_data,
+                    on_open=self._open_file_location,
+                    font_family=FONT_FAMILY,
+                    font_size=FONT_SIZE
+                )
+                card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
+            except Exception as e:
+                logger.error(f"Ошибка создания карточки для файла: {e}")
+                # Создаём карточку с ошибкой
+                error_card = ctk.CTkFrame(self.cards_frame, corner_radius=10, fg_color="darkred")
+                error_label = ctk.CTkLabel(
+                    error_card,
+                    text=f"Ошибка загрузки\n{str(e)[:100]}",
+                    font=self.small_font,
+                    wraplength=180
+                )
+                error_label.pack(padx=10, pady=10)
+                error_card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
+
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row += 1
 
         self.status_bar.configure(text=f"Отображено файлов: {len(files)} | Шрифт: {FONT_FAMILY}")
+        logger.debug(f"Обновлён список файлов: {len(files)} элементов")
 
     def _open_file_location(self, file_path: str):
         """Открывает расположение файла (если это не файл из архива)."""
