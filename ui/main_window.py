@@ -5,14 +5,16 @@
 
 import customtkinter as ctk
 import tkinter as tk
+import tkinter.font as tkfont  # Добавьте эту строку
 from tkinter import filedialog, messagebox
 from pathlib import Path
 import logging
 import os
 import sys
 import platform
+import subprocess
 from PIL import Image
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 
 # Настройка темы
 ctk.set_appearance_mode("dark")
@@ -21,65 +23,187 @@ ctk.set_default_color_theme("blue")
 logger = logging.getLogger(__name__)
 
 
-def detect_system_font() -> str:
+def get_available_fonts_linux() -> List[str]:
     """
-    Определяет подходящий системный шрифт с поддержкой кириллицы.
-    НЕ создаёт виджеты Tkinter — только возвращает имя шрифта.
+    Получает список всех доступных шрифтов в Linux через fc-list.
+    """
+    try:
+        result = subprocess.run(
+            ['fc-list', '--format=%{family}\n'],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            # Разбиваем на строки, удаляем дубликаты, сортируем
+            fonts = list(set(
+                font.strip()
+                for font in result.stdout.split('\n')
+                if font.strip()
+            ))
+            logger.info(f"Найдено {len(fonts)} шрифтов через fc-list")
+            return sorted(fonts)
+    except Exception as e:
+        logger.warning(f"Ошибка при получении шрифтов через fc-list: {e}")
+
+    return []
+
+
+def get_font_dirs_linux() -> List[str]:
+    """
+    Возвращает список директорий со шрифтами в Linux.
+    """
+    font_dirs = [
+        "/usr/share/fonts",
+        "/usr/local/share/fonts",
+        os.path.expanduser("~/.fonts"),
+        os.path.expanduser("~/.local/share/fonts"),
+    ]
+
+    # Добавляем поддиректории из /usr/share/fonts
+    main_font_dir = "/usr/share/fonts"
+    if os.path.exists(main_font_dir):
+        for item in os.listdir(main_font_dir):
+            full_path = os.path.join(main_font_dir, item)
+            if os.path.isdir(full_path):
+                font_dirs.append(full_path)
+
+    return [d for d in font_dirs if os.path.exists(d)]
+
+
+def find_font_file(font_name: str) -> Optional[str]:
+    """
+    Ищет файл шрифта по имени в системных директориях.
+    """
+    font_dirs = get_font_dirs_linux()
+
+    # Варианты имени файла
+    search_names = [
+        font_name.lower().replace(' ', ''),      # dejavusans
+        font_name.lower().replace(' ', '-'),      # dejavu-sans
+        font_name.lower(),                        # dejavu sans
+    ]
+
+    extensions = ['.ttf', '.otf', '.ttc']
+
+    for font_dir in font_dirs:
+        if not os.path.exists(font_dir):
+            continue
+
+        for root, dirs, files in os.walk(font_dir):
+            for file in files:
+                file_lower = file.lower()
+                # Проверяем расширение
+                if not any(file_lower.endswith(ext) for ext in extensions):
+                    continue
+
+                # Проверяем имя
+                for search_name in search_names:
+                    if search_name in file_lower:
+                        full_path = os.path.join(root, file)
+                        logger.info(f"Найден файл шрифта: {full_path}")
+                        return full_path
+
+    return None
+
+
+def register_fonts_with_tkinter():
+    """
+    Регистрирует системные шрифты в Tkinter.
+    Особенно важно для Linux, где Tkinter может не видеть шрифты.
     """
     system = platform.system()
 
-    if system == "Windows":
-        return "Segoe UI"
-    elif system == "Darwin":
-        return "SF Pro Display"
-    else:  # Linux
-        # Проверяем наличие шрифтов в системе через fc-list
-        import subprocess
+    if system == "Linux":
+        font_dirs = get_font_dirs_linux()
+
+        for font_dir in font_dirs:
+            if os.path.exists(font_dir):
+                try:
+                    # Пытаемся добавить директорию со шрифтами в X11
+                    os.environ.setdefault('XDG_DATA_DIRS', '')
+                    if font_dir not in os.environ.get('XDG_DATA_DIRS', ''):
+                        os.environ['XDG_DATA_DIRS'] += f':{font_dir}'
+                except Exception:
+                    pass
+
+        # Пытаемся использовать xset для обновления пути шрифтов
         try:
-            result = subprocess.run(
-                ['fc-list', ':lang=ru', 'family'],
+            subprocess.run(
+                ['xset', '+fp', '/usr/share/fonts'],
                 capture_output=True,
-                text=True,
                 timeout=5
             )
-            if result.returncode == 0 and result.stdout.strip():
-                # Берём первый доступный шрифт с кириллицей
-                fonts = result.stdout.strip().split('\n')
-                # Приоритетные шрифты
-                preferred = ['DejaVu Sans', 'Ubuntu', 'Liberation Sans', 'Noto Sans']
-                for pref in preferred:
-                    for font_line in fonts:
-                        if pref in font_line:
-                            font_name = font_line.split(':')[0].strip()
-                            logger.info(f"Определён системный шрифт: {font_name}")
-                            return font_name
-                # Если не нашли предпочтительный — берём первый
-                font_name = fonts[0].split(':')[0].strip()
-                logger.info(f"Определён системный шрифт: {font_name}")
-                return font_name
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+            subprocess.run(['xset', 'fp', 'rehash'], capture_output=True, timeout=5)
+        except Exception:
             pass
 
-        # Fallback для Linux без fc-list
-        logger.warning("Не удалось определить шрифт через fc-list, используется Arial")
-        return "Arial"
 
-
-def get_system_font() -> Tuple[str, int]:
+def detect_best_font() -> Tuple[str, int]:
     """
-    Возвращает кортеж (имя_шрифта, размер).
-    Без создания виджетов Tkinter.
+    Определяет лучший доступный шрифт с поддержкой кириллицы.
+    Возвращает (имя_шрифта, размер).
     """
-    font_name = detect_system_font()
-    return (font_name, 12)
+    system = platform.system()
+
+    preferred_fonts = [
+        "DejaVu Sans",
+        "Liberation Sans",
+        "Ubuntu",
+        "Noto Sans",
+        "FreeSans",
+        "Arial",
+        "Helvetica",
+        "TkDefaultFont",
+    ]
+
+    if system == "Windows":
+        preferred_fonts = ["Segoe UI", "Arial", "Tahoma", "Verdana"] + preferred_fonts
+    elif system == "Darwin":
+        preferred_fonts = ["SF Pro Display", "Helvetica Neue", "Helvetica"] + preferred_fonts
+
+    register_fonts_with_tkinter()
+
+    root = tk.Tk()
+    root.withdraw()
+
+    try:
+        # Используем tkfont вместо tk.font
+        available_fonts = set(tkfont.families())
+        logger.info(f"Доступно шрифтов в Tkinter: {len(available_fonts)}")
+
+        sample_fonts = sorted(available_fonts)[:20]
+        logger.info(f"Примеры шрифтов: {', '.join(sample_fonts)}")
+
+        for font in preferred_fonts:
+            if font in available_fonts:
+                logger.info(f"Выбран шрифт: {font}")
+                root.destroy()
+                return (font, 12)
+
+        for font in sorted(available_fonts):
+            if 'sans' in font.lower():
+                logger.info(f"Выбран запасной шрифт: {font}")
+                root.destroy()
+                return (font, 12)
+
+        logger.warning("Не найден подходящий шрифт, используется TkDefaultFont")
+        root.destroy()
+        return ("TkDefaultFont", 12)
+
+    finally:
+        try:
+            root.destroy()
+        except:
+            pass
 
 
-# Получаем шрифт ДО создания окна
-SYSTEM_FONT = get_system_font()
+# Определяем шрифт при загрузке модуля
+SYSTEM_FONT = detect_best_font()
 FONT_FAMILY = SYSTEM_FONT[0]
 FONT_SIZE = SYSTEM_FONT[1]
 
-logger.info(f"Системный шрифт: {FONT_FAMILY}, размер: {FONT_SIZE}")
+logger.info(f"Итоговый шрифт: {FONT_FAMILY}, размер: {FONT_SIZE}")
 
 
 class STLManagerApp(ctk.CTk):
@@ -100,8 +224,8 @@ class STLManagerApp(ctk.CTk):
         self.geometry("1400x900")
         self.minsize(1024, 600)
 
-        # Шрифты создаём ПОСЛЕ инициализации окна
-        self._setup_fonts()
+        # Создаём шрифты после инициализации окна
+        self._create_fonts()
 
         # Иконка
         try:
@@ -121,35 +245,47 @@ class STLManagerApp(ctk.CTk):
 
         logger.info(f"Главное окно создано (шрифт: {FONT_FAMILY})")
 
-    def _setup_fonts(self):
-        """Настройка шрифтов после создания окна."""
-        # Проверяем, доступен ли шрифт в Tkinter
-        available_fonts = tk.font.families()
+    def _create_fonts(self):
+        """Создаёт объекты шрифтов после инициализации окна."""
+        try:
+            self.title_font = ctk.CTkFont(
+                family=FONT_FAMILY,
+                size=FONT_SIZE + 2,
+                weight="bold"
+            )
+            self.normal_font = ctk.CTkFont(
+                family=FONT_FAMILY,
+                size=FONT_SIZE
+            )
+            self.small_font = ctk.CTkFont(
+                family=FONT_FAMILY,
+                size=FONT_SIZE - 2
+            )
+            self.button_font = ctk.CTkFont(
+                family=FONT_FAMILY,
+                size=FONT_SIZE,
+                weight="bold"
+            )
+            self.status_font = ctk.CTkFont(
+                family=FONT_FAMILY,
+                size=FONT_SIZE - 1
+            )
 
-        if FONT_FAMILY in available_fonts:
-            actual_font = FONT_FAMILY
-        else:
-            # Пробуем найти альтернативу
-            logger.warning(f"Шрифт {FONT_FAMILY} не найден в Tkinter, поиск альтернативы...")
+            # Проверяем, что шрифты создались корректно
+            test_label = ctk.CTkLabel(self, text="Тест кириллицы: Привет мир!", font=self.normal_font)
+            test_label.destroy()
 
-            alternatives = ['DejaVu Sans', 'Ubuntu', 'Liberation Sans', 'Noto Sans',
-                          'Segoe UI', 'Arial', 'Helvetica', 'TkDefaultFont']
+            logger.info(f"Шрифты созданы успешно: {FONT_FAMILY}")
 
-            actual_font = 'TkDefaultFont'  # Fallback по умолчанию
-            for alt in alternatives:
-                if alt in available_fonts:
-                    actual_font = alt
-                    logger.info(f"Используется альтернативный шрифт: {alt}")
-                    break
-
-        self.title_font = ctk.CTkFont(family=actual_font, size=FONT_SIZE + 2, weight="bold")
-        self.normal_font = ctk.CTkFont(family=actual_font, size=FONT_SIZE)
-        self.small_font = ctk.CTkFont(family=actual_font, size=FONT_SIZE - 2)
-        self.button_font = ctk.CTkFont(family=actual_font, size=FONT_SIZE, weight="bold")
-        self.status_font = ctk.CTkFont(family=actual_font, size=FONT_SIZE - 1)
-
-        # Сохраняем реально используемый шрифт для карточек
-        self.actual_font_family = actual_font
+        except Exception as e:
+            logger.error(f"Ошибка создания шрифта {FONT_FAMILY}: {e}")
+            # Fallback на стандартный шрифт
+            logger.warning("Используется CTkDefaultFont")
+            self.title_font = ctk.CTkFont(size=FONT_SIZE + 2, weight="bold")
+            self.normal_font = ctk.CTkFont(size=FONT_SIZE)
+            self.small_font = ctk.CTkFont(size=FONT_SIZE - 2)
+            self.button_font = ctk.CTkFont(size=FONT_SIZE, weight="bold")
+            self.status_font = ctk.CTkFont(size=FONT_SIZE - 1)
 
     def _create_widgets(self):
         """Создаёт все виджеты."""
@@ -278,7 +414,7 @@ class STLManagerApp(ctk.CTk):
         # === Строка состояния ===
         self.status_bar = ctk.CTkLabel(
             self,
-            text="Поддерживаются архивы: 7z, RAR, ZIP | Шрифт: " + self.actual_font_family,
+            text=f"Поддерживаются архивы: 7z, RAR, ZIP | Шрифт: {FONT_FAMILY}",
             anchor="w",
             font=self.status_font,
             height=25
@@ -465,7 +601,7 @@ class STLManagerApp(ctk.CTk):
                 self.cards_frame,
                 file_data=file_data,
                 on_open=self._open_file_location,
-                font_family=self.actual_font_family,
+                font_family=FONT_FAMILY,
                 font_size=FONT_SIZE
             )
             card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
@@ -478,12 +614,10 @@ class STLManagerApp(ctk.CTk):
         for i in range(max_cols):
             self.cards_frame.grid_columnconfigure(i, weight=1)
 
-        self.status_bar.configure(text=f"Отображено файлов: {len(files)} | Шрифт: {self.actual_font_family}")
+        self.status_bar.configure(text=f"Отображено файлов: {len(files)} | Шрифт: {FONT_FAMILY}")
 
     def _open_file_location(self, file_path: str):
         """Открывает расположение файла (если это не файл из архива)."""
-        import subprocess
-
         if file_path.startswith("[ARCHIVE]"):
             messagebox.showinfo(
                 "Файл в архиве",
