@@ -47,6 +47,7 @@ python app.py
 
 # Установка системных зависимостей
 sudo pacman -S --noconfirm python-numpy python-pillow python-scipy python-matplotlib tk
+sudo pacman -S zenity
 
 # Установка остальных через pip
 pip install customtkinter trimesh vedo vtk py7zr rarfile patool

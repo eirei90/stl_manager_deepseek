@@ -215,11 +215,42 @@ class STLManagerApp(ctk.CTk):
         self.status.configure(height=25)  # фиксируем высоту
 
     def select_folder(self):
-        folder = filedialog.askdirectory(title="Выберите папку с STL")
+        """Диалог выбора папки."""
+        import subprocess
+        import platform
+        
+        folder = None
+        
+        # В Linux используем Zenity для нативного диалога со скроллом
+        if platform.system() == 'Linux':
+            try:
+                result = subprocess.run(
+                    ['zenity', '--file-selection', '--directory',
+                     '--title=Выберите папку с STL файлами и архивами',
+                     '--filename=' + (self.current_root_path or os.path.expanduser('~'))],
+                    capture_output=True, text=True, timeout=120
+                )
+                if result.returncode == 0:
+                    folder = result.stdout.strip()
+            except FileNotFoundError:
+                logger.warning("Zenity не установлен. Используйте: sudo pacman -S zenity")
+            except Exception as e:
+                logger.error(f"Ошибка Zenity: {e}")
+        
+        # Fallback на стандартный диалог (Windows/macOS или если Zenity не сработал)
+        if not folder:
+            from tkinter import filedialog
+            folder = filedialog.askdirectory(
+                title="Выберите папку с STL файлами и архивами",
+                initialdir=self.current_root_path or os.path.expanduser('~')
+            )
+        
         if folder:
             self.current_root_path = folder
             self.lbl_folder.configure(text=f"📂 {folder}")
             self.btn_scan.configure(state="normal")
+            self.status.configure(text=f"Выбрана папка: {folder}")
+            logger.info(f"Выбрана папка: {folder}")
 
     def start_scan(self):
         if not self.current_root_path:
