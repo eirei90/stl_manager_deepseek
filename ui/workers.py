@@ -1,15 +1,25 @@
 """
 Фоновые потоки для выполнения длительных операций без зависания GUI.
-Поддерживает остановку операций.
+Поддерживает остановку операций и рендеринг файлов из архивов.
 """
 
 import threading
 import logging
+import tempfile
+import shutil
 from typing import Callable, Optional
 from pathlib import Path
 import os
 
 logger = logging.getLogger(__name__)
+
+# Импорт для работы с архивами
+try:
+    from services.archive_utils import ArchiveExtractor
+    ARCHIVE_SUPPORT = True
+except ImportError:
+    ARCHIVE_SUPPORT = False
+    logger.warning("archive_utils не найден, файлы из архивов будут пропущены")
 
 
 class CancellationToken:
@@ -108,40 +118,168 @@ class ScanWorker(BackgroundTask):
 
 
 class RenderWorker(BackgroundTask):
-    """Поток для пакетного рендеринга превью."""
+    """Поток для пакетного рендеринга превью с поддержкой файлов из архивов."""
 
     def __init__(self, renderer, db, project_id: int, **kwargs):
         self.renderer = renderer
         self.db = db
         self.project_id = project_id
 
+        # Временная директория для извлечения файлов из архивов
+        self._temp_dir = tempfile.mkdtemp(prefix="stl_render_")
+
         def render_target(progress_cb, cancel_token):
-            return self._batch_render(progress_cb, cancel_token)
+            try:
+                return self._batch_render(progress_cb, cancel_token)
+            finally:
+                # Очищаем временную директорию
+                self._cleanup_temp()
 
         super().__init__(target=render_target, **kwargs)
+
+    def _cleanup_temp(self):
+        """Очищает временную директорию."""
+        try:
+            if os.path.exists(self._temp_dir):
+                shutil.rmtree(self._temp_dir)
+                logger.debug(f"Временная директория очищена: {self._temp_dir}")
+        except Exception as e:
+            logger.warning(f"Не удалось очистить временную директорию: {e}")
+
+    def _extract_from_archive(self, archive_path: str, file_name: str) -> Optional[str]:
+        """
+        Извлекает конкретный файл из архива во временную директорию.
+
+        Args:
+            archive_path: Путь к архиву
+            file_name: Имя файла внутри архива
+
+        Returns:
+            Путь к извлечённому файлу или None
+        """
+        import zipfile
+
+        try:
+            # Создаём поддиректорию для этого архива
+            archive_name = Path(archive_path).stem
+            extract_dir = os.path.join(self._temp_dir, archive_name)
+            os.makedirs(extract_dir, exist_ok=True)
+
+            # Извлекаем файл
+            if archive_path.endswith('.zip'):
+                with zipfile.ZipFile(archive_path, 'r') as zf:
+                    # Ищем файл в архиве
+                    for name in zf.namelist():
+                        if file_name in name or name.endswith(file_name):
+                            zf.extract(name, extract_dir)
+                            extracted_path = os.path.join(extract_dir, name)
+                            if os.path.exists(extracted_path):
+                                logger.info(f"  Извлечён из архива: {name}")
+                                return extracted_path
+
+            elif archive_path.endswith('.7z') and ARCHIVE_SUPPORT:
+                import py7zr
+                with py7zr.SevenZipFile(archive_path, 'r') as szf:
+                    for name in szf.getnames():
+                        if file_name in name or name.endswith(file_name):
+                            szf.extract(extract_dir, targets=[name])
+                            extracted_path = os.path.join(extract_dir, name)
+                            if os.path.exists(extracted_path):
+                                return extracted_path
+
+            elif archive_path.endswith('.rar') and ARCHIVE_SUPPORT:
+                import rarfile
+                with rarfile.RarFile(archive_path) as rf:
+                    for info in rf.infolist():
+                        if file_name in info.filename or info.filename.endswith(file_name):
+                            rf.extract(info, extract_dir)
+                            extracted_path = os.path.join(extract_dir, info.filename)
+                            if os.path.exists(extracted_path):
+                                return extracted_path
+
+            logger.warning(f"  Файл {file_name} не найден в архиве {archive_path}")
+            return None
+
+        except Exception as e:
+            logger.error(f"  Ошибка извлечения из архива: {e}")
+            return None
+
+    def _find_archive_for_file(self, file_name: str) -> Optional[str]:
+        """
+        Ищет архив, содержащий указанный файл.
+        Ищет в директориях проекта.
+        """
+        # Получаем все файлы проекта для поиска архивов
+        files = self.db.get_files_for_project(self.project_id)
+
+        # Собираем все уникальные директории
+        dirs = set()
+        for record in files:
+            path = record[2]
+            if not path.startswith("[ARCHIVE]"):
+                parent = str(Path(path).parent)
+                dirs.add(parent)
+
+        # Ищем архивы в этих директориях
+        for dir_path in dirs:
+            if not os.path.exists(dir_path):
+                continue
+
+            for item in os.listdir(dir_path):
+                item_path = os.path.join(dir_path, item)
+                if os.path.isfile(item_path):
+                    ext = Path(item).suffix.lower()
+                    if ext in ('.zip', '.7z', '.rar'):
+                        # Проверяем, содержит ли архив нужный файл
+                        try:
+                            if ext == '.zip':
+                                import zipfile
+                                with zipfile.ZipFile(item_path, 'r') as zf:
+                                    for name in zf.namelist():
+                                        if file_name in name:
+                                            logger.info(f"  Найден архив: {item_path}")
+                                            return item_path
+                            elif ext == '.7z' and ARCHIVE_SUPPORT:
+                                import py7zr
+                                with py7zr.SevenZipFile(item_path, 'r') as szf:
+                                    if file_name in szf.getnames():
+                                        return item_path
+                            elif ext == '.rar' and ARCHIVE_SUPPORT:
+                                import rarfile
+                                with rarfile.RarFile(item_path) as rf:
+                                    for info in rf.infolist():
+                                        if file_name in info.filename:
+                                            return item_path
+                        except Exception:
+                            continue
+
+        return None
 
     def _batch_render(self, progress_cb, cancel_token) -> int:
         """Рендерит превью для всех файлов проекта."""
         files = self.db.get_files_for_project(self.project_id)
         total = len(files)
         rendered = 0
-        skipped = 0
+        skipped = {
+            'not_valid': 0,
+            'archive': 0,
+            'not_found': 0,
+            'already_has_thumb': 0
+        }
         errors = 0
 
-        logger.info(f"=" * 50)
-        logger.info(f"Начинаем рендеринг {total} файлов")
-        logger.info(f"=" * 50)
+        logger.info(f"=" * 60)
+        logger.info(f"НАЧАЛО РЕНДЕРИНГА")
+        logger.info(f"  Проект ID: {self.project_id}")
+        logger.info(f"  Всего файлов: {total}")
+        logger.info(f"  Метод: {self.renderer.method}")
+        logger.info(f"=" * 60)
 
         for idx, file_record in enumerate(files, 1):
-            # Проверяем отмену
             if cancel_token.is_cancelled:
-                logger.info(f"Рендеринг прерван. Обработано: {rendered}/{total}")
+                logger.info(f"⏹ Прервано. Обработано: {idx-1}/{total}")
                 break
 
-            # Распаковываем данные файла
-            # Индексы: 0:id, 1:file_name, 2:file_path, 3:file_size, 4:modified_date,
-            #          5:face_count, 6:bbox_x, 7:bbox_y, 8:bbox_z, 9:volume,
-            #          10:surface_area, 11:is_valid, 12:has_thumbnail, 13:thumbnail_path
             file_id = file_record[0]
             file_name = file_record[1]
             file_path = file_record[2]
@@ -149,96 +287,115 @@ class RenderWorker(BackgroundTask):
 
             # Пропускаем невалидные
             if not is_valid:
-                logger.debug(f"[{idx}/{total}] Пропущен (невалидный): {file_name}")
-                skipped += 1
+                logger.debug(f"[{idx}/{total}] ПРОПУЩЕН (невалидный): {file_name}")
+                skipped['not_valid'] += 1
                 if progress_cb:
                     progress_cb(idx, total)
                 continue
 
-            # Пропускаем файлы из архивов
+            # === Обработка файлов из архивов ===
             if file_path.startswith("[ARCHIVE]"):
-                logger.debug(f"[{idx}/{total}] Пропущен (архив): {file_name}")
-                skipped += 1
+                original_name = file_path.replace("[ARCHIVE] ", "")
+                logger.info(f"[{idx}/{total}] Файл из архива: {original_name}")
+
+                # Ищем архив
+                archive_path = self._find_archive_for_file(original_name)
+
+                if archive_path:
+                    # Извлекаем файл
+                    extracted_path = self._extract_from_archive(archive_path, original_name)
+
+                    if extracted_path and os.path.exists(extracted_path):
+                        # Рендерим извлечённый файл
+                        stl_path = Path(extracted_path)
+
+                        # Сохраняем превью в .thumbs рядом с архивом
+                        archive_dir = Path(archive_path).parent
+                        thumb_dir = archive_dir / ".thumbs"
+                        thumb_dir.mkdir(exist_ok=True)
+
+                        # Имя превью: archive_name__file_name.jpg
+                        archive_stem = Path(archive_path).stem
+                        safe_name = original_name.replace('/', '_').replace('\\', '_')
+                        thumb_path = thumb_dir / f"{archive_stem}__{Path(safe_name).stem}.jpg"
+
+                        try:
+                            success = self.renderer.render_to_jpeg(
+                                str(stl_path),
+                                str(thumb_path)
+                            )
+
+                            if success and thumb_path.exists():
+                                self.db.update_thumbnail_status(file_id, str(thumb_path))
+                                rendered += 1
+                                logger.info(f"  ✅ Превью из архива создано!")
+                            else:
+                                self.renderer.create_error_placeholder(str(thumb_path))
+                                self.db.update_thumbnail_status(file_id, str(thumb_path))
+                                errors += 1
+                        except Exception as e:
+                            logger.error(f"  ❌ Ошибка: {e}")
+                            errors += 1
+                    else:
+                        logger.warning(f"  ❌ Не удалось извлечь файл из архива")
+                        skipped['archive'] += 1
+                else:
+                    logger.warning(f"  ❌ Архив не найден для {original_name}")
+                    skipped['archive'] += 1
+
                 if progress_cb:
                     progress_cb(idx, total)
                 continue
 
-            # Проверяем существование файла
+            # === Обработка обычных файлов ===
             stl_path = Path(file_path)
+
             if not stl_path.exists():
-                logger.warning(f"[{idx}/{total}] Файл не найден: {file_path}")
-                skipped += 1
+                logger.warning(f"[{idx}/{total}] ПРОПУЩЕН (не найден): {file_path}")
+                skipped['not_found'] += 1
                 if progress_cb:
                     progress_cb(idx, total)
                 continue
 
-            # Создаём директорию .thumbs рядом с файлом
+            # Создаём .thumbs
             thumb_dir = stl_path.parent / ".thumbs"
             try:
                 thumb_dir.mkdir(exist_ok=True, parents=True)
-            except PermissionError:
-                # Если нет прав на создание .thumbs, сохраняем рядом
+            except Exception:
                 thumb_dir = stl_path.parent
-                logger.warning(f"Нет прав на создание .thumbs, сохраняем рядом с файлом")
-            except Exception as e:
-                logger.error(f"Ошибка создания директории {thumb_dir}: {e}")
-                errors += 1
-                if progress_cb:
-                    progress_cb(idx, total)
-                continue
 
             thumb_path = thumb_dir / f"{stl_path.stem}.jpg"
 
-            # Логируем
-            logger.info(f"[{idx}/{total}] Рендеринг: {file_name}")
-            logger.debug(f"  STL: {stl_path}")
-            logger.debug(f"  JPG: {thumb_path}")
+            if idx % 5 == 0 or idx == 1:
+                logger.info(f"[{idx}/{total}] Рендеринг: {file_name}")
 
-            # Рендерим
             try:
                 success = self.renderer.render_to_jpeg(
                     str(stl_path),
                     str(thumb_path)
                 )
 
-                if success:
-                    # Проверяем что файл создался
-                    if thumb_path.exists() and thumb_path.stat().st_size > 100:
-                        # Сохраняем в БД
-                        self.db.update_thumbnail_status(file_id, str(thumb_path))
-                        rendered += 1
-                        logger.info(f"  ✅ Успешно! ({rendered} всего)")
-                    else:
-                        logger.warning(f"  ⚠ Файл превью слишком маленький")
-                        self.renderer.create_error_placeholder(str(thumb_path))
-                        self.db.update_thumbnail_status(file_id, str(thumb_path))
-                        errors += 1
+                if success and thumb_path.exists() and thumb_path.stat().st_size > 100:
+                    self.db.update_thumbnail_status(file_id, str(thumb_path))
+                    rendered += 1
                 else:
-                    logger.warning(f"  ❌ Рендеринг вернул False")
-                    # Создаём заглушку
                     self.renderer.create_error_placeholder(str(thumb_path))
                     self.db.update_thumbnail_status(file_id, str(thumb_path))
                     errors += 1
-
             except Exception as e:
-                logger.error(f"  ❌ Исключение: {e}", exc_info=True)
-                try:
-                    self.renderer.create_error_placeholder(str(thumb_path))
-                    self.db.update_thumbnail_status(file_id, str(thumb_path))
-                except:
-                    pass
+                logger.error(f"  ❌ {e}")
                 errors += 1
 
-            # Обновляем прогресс
             if progress_cb:
                 progress_cb(idx, total)
 
         # Итоги
-        logger.info(f"=" * 50)
-        logger.info(f"Рендеринг завершён:")
+        logger.info(f"=" * 60)
+        logger.info(f"РЕНДЕРИНГ ЗАВЕРШЁН")
         logger.info(f"  ✅ Успешно: {rendered}")
-        logger.info(f"  ⏭ Пропущено: {skipped}")
+        logger.info(f"  ⏭ Пропущено: невалидных={skipped['not_valid']}, "
+                   f"из архивов={skipped['archive']}, не найдено={skipped['not_found']}")
         logger.info(f"  ❌ Ошибок: {errors}")
-        logger.info(f"=" * 50)
+        logger.info(f"=" * 60)
 
         return rendered
