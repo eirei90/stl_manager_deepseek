@@ -1,2 +1,7 @@
 /.venv/
 /venv/
+models/__pycache__/
+services/__pycache__/
+ui/__pycache__/
+.venv/
+.idea/
