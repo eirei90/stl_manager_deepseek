@@ -1,6 +1,7 @@
 """
 Виджет карточки STL-файла для отображения в списке.
 Содержит миниатюру, метаданные и кнопку открытия.
+Показывает источник файла: обычный STL или из архива.
 """
 
 import customtkinter as ctk
@@ -19,7 +20,6 @@ class FileCard(ctk.CTkFrame):
 
     def __init__(self, master, file_data: tuple, on_open=None,
                  font_family="Arial", font_size=12, **kwargs):
-        # Убедимся, что master - это виджет
         if not isinstance(master, (ctk.CTkFrame, ctk.CTkScrollableFrame, ctk.CTk)):
             raise TypeError(f"master должен быть виджетом CustomTkinter, получен {type(master)}")
 
@@ -35,6 +35,7 @@ class FileCard(ctk.CTkFrame):
         self.normal_font = ctk.CTkFont(family=font_family, size=font_size - 1)
         self.small_font = ctk.CTkFont(family=font_family, size=font_size - 2)
         self.button_font = ctk.CTkFont(family=font_family, size=font_size - 1)
+        self.badge_font = ctk.CTkFont(family=font_family, size=font_size - 3, weight="bold")
 
         # Распаковываем данные
         try:
@@ -53,8 +54,7 @@ class FileCard(ctk.CTkFrame):
                 self.thumbnail_path
             ) = file_data
         except ValueError as e:
-            logger.error(f"Неверный формат данных файла: {e}")
-            # Устанавливаем значения по умолчанию
+            logger.error(f"Неверный формат данных: {e}")
             self.file_id = 0
             self.file_name = "Ошибка"
             self.file_path = ""
@@ -68,11 +68,25 @@ class FileCard(ctk.CTkFrame):
             self.has_thumbnail = 0
             self.thumbnail_path = None
 
-        self._photo = None  # Для хранения ссылки на изображение
+        # Определяем источник файла
+        self.is_from_archive = self.file_path.startswith("[ARCHIVE]")
+
+        self._photo = None
         self._create_widgets()
 
     def _create_widgets(self):
         """Создаёт элементы карточки."""
+
+        # === Рамка с цветом в зависимости от источника ===
+        if self.is_from_archive:
+            border_color = "#FF9800"  # Оранжевый для архивов
+        elif self.is_valid:
+            border_color = "#4CAF50"  # Зелёный для обычных STL
+        else:
+            border_color = "#F44336"  # Красный для битых
+
+        self.configure(border_width=2, border_color=border_color)
+
         # === Миниатюра ===
         self.thumb_label = ctk.CTkLabel(
             self,
@@ -80,13 +94,81 @@ class FileCard(ctk.CTkFrame):
             width=200,
             height=200,
             font=self.normal_font,
-            fg_color="gray20"
+            fg_color="gray20",
+            corner_radius=8
         )
         self.thumb_label.pack(padx=10, pady=(10, 5))
-        self.thumb_label.pack_propagate(False)  # Фиксируем размер
+        self.thumb_label.pack_propagate(False)
 
         # Загружаем изображение
         self._load_thumbnail()
+
+        # === Бейдж источника файла ===
+        badge_frame = ctk.CTkFrame(self, fg_color="transparent")
+        badge_frame.pack(fill="x", padx=10, pady=(0, 5))
+
+        if self.is_from_archive:
+            # Метка "АРХИВ"
+            archive_badge = ctk.CTkFrame(
+                badge_frame,
+                fg_color="#FF9800",
+                corner_radius=4,
+                width=60,
+                height=20
+            )
+            archive_badge.pack(side="left", padx=(0, 5))
+            archive_badge.pack_propagate(False)
+
+            ctk.CTkLabel(
+                archive_badge,
+                text="📦 Архив",
+                font=self.badge_font,
+                text_color="white"
+            ).pack(padx=4, pady=1)
+
+            # Имя архива
+            archive_name = self.file_path.replace("[ARCHIVE] ", "").split("/")[0]
+            if len(archive_name) > 20:
+                archive_name = archive_name[:17] + "..."
+
+            ctk.CTkLabel(
+                badge_frame,
+                text=f"📁 {archive_name}",
+                font=self.small_font,
+                text_color="#FF9800"
+            ).pack(side="left")
+        else:
+            # Метка "STL"
+            stl_badge = ctk.CTkFrame(
+                badge_frame,
+                fg_color="#4CAF50",
+                corner_radius=4,
+                width=50,
+                height=20
+            )
+            stl_badge.pack(side="left", padx=(0, 5))
+            stl_badge.pack_propagate(False)
+
+            ctk.CTkLabel(
+                stl_badge,
+                text="🔷 STL",
+                font=self.badge_font,
+                text_color="white"
+            ).pack(padx=4, pady=1)
+
+            # Путь к файлу (сокращённый)
+            try:
+                parent_name = Path(self.file_path).parent.name
+                if len(parent_name) > 20:
+                    parent_name = parent_name[:17] + "..."
+                ctk.CTkLabel(
+                    badge_frame,
+                    text=f"📁 {parent_name}",
+                    font=self.small_font,
+                    text_color="gray"
+                ).pack(side="left")
+            except:
+                pass
 
         # === Имя файла ===
         if len(self.file_name) > 25:
@@ -103,15 +185,15 @@ class FileCard(ctk.CTkFrame):
         )
         self.lbl_name.pack(padx=10, pady=(0, 5), fill="x")
 
-        # === Информация ===
+        # === Информация о файле ===
         info_frame = ctk.CTkFrame(self, fg_color="transparent")
         info_frame.pack(padx=10, pady=5, fill="x")
 
         # Количество полигонов
         if self.face_count:
-            face_text = f"Полигонов: {self.face_count:,}"
+            face_text = f"🔺 {self.face_count:,}"
         else:
-            face_text = "Полигонов: Н/Д"
+            face_text = "🔺 Н/Д"
 
         ctk.CTkLabel(
             info_frame,
@@ -122,9 +204,9 @@ class FileCard(ctk.CTkFrame):
 
         # Размеры
         if self.bbox_x and self.bbox_y and self.bbox_z:
-            bbox_text = f"Размер: {self.bbox_x:.1f}×{self.bbox_y:.1f}×{self.bbox_z:.1f} мм"
+            bbox_text = f"📐 {self.bbox_x:.1f}×{self.bbox_y:.1f}×{self.bbox_z:.1f} мм"
         else:
-            bbox_text = "Размер: Н/Д"
+            bbox_text = "📐 Н/Д"
 
         ctk.CTkLabel(
             info_frame,
@@ -138,11 +220,11 @@ class FileCard(ctk.CTkFrame):
         if self.file_size:
             size_kb = self.file_size / 1024
             if size_kb < 1024:
-                size_text = f"Размер: {size_kb:.1f} КБ"
+                size_text = f"💾 {size_kb:.1f} КБ"
             else:
-                size_text = f"Размер: {size_kb/1024:.1f} МБ"
+                size_text = f"💾 {size_kb/1024:.1f} МБ"
         else:
-            size_text = "Размер: Н/Д"
+            size_text = "💾 Н/Д"
 
         ctk.CTkLabel(
             info_frame,
@@ -152,41 +234,52 @@ class FileCard(ctk.CTkFrame):
             anchor="w"
         ).pack(fill="x")
 
-        # Статус
+        # === Статус ===
+        status_frame = ctk.CTkFrame(self, fg_color="transparent")
+        status_frame.pack(padx=10, pady=(5, 0), fill="x")
+
         if not self.is_valid:
             status_text = "⚠ Файл повреждён"
             status_color = "#FF6B6B"
         elif self.has_thumbnail:
-            status_text = "✓ Превью готово"
+            if self.is_from_archive:
+                status_text = "✓ Превью (из архива)"
+            else:
+                status_text = "✓ Превью готово"
             status_color = "#51CF66"
         else:
             status_text = "○ Без превью"
             status_color = "#FFD43B"
 
         ctk.CTkLabel(
-            info_frame,
+            status_frame,
             text=status_text,
             font=self.small_font,
             text_color=status_color,
             anchor="w"
-        ).pack(fill="x", pady=(5, 0))
+        ).pack(fill="x", pady=(2, 0))
 
         # === Кнопка открытия ===
+        if self.is_from_archive:
+            btn_text = "📦 Открыть архив"
+        else:
+            btn_text = "📂 Открыть папку"
+
         self.btn_open = ctk.CTkButton(
             self,
-            text="📂 Открыть папку",
+            text=btn_text,
             command=self._open_file,
             width=180,
             height=30,
             font=self.button_font,
             fg_color="transparent",
             border_width=1,
-            border_color="gray"
+            border_color="gray" if not self.is_from_archive else "#FF9800"
         )
         self.btn_open.pack(padx=10, pady=(5, 10))
 
-        # Фиксированная ширина карточки
-        self.configure(width=220, height=380)
+        # Фиксированные размеры карточки
+        self.configure(width=240, height=420)
         self.pack_propagate(False)
 
     def _load_thumbnail(self):
@@ -200,13 +293,18 @@ class FileCard(ctk.CTkFrame):
             else:
                 self._show_placeholder()
         except Exception as e:
-            logger.warning(f"Не удалось загрузить превью {self.thumbnail_path}: {e}")
+            logger.warning(f"Не удалось загрузить превью: {e}")
             self._show_placeholder()
 
     def _show_placeholder(self):
         """Показывает заглушку если нет превью."""
+        if self.is_from_archive:
+            text = "📦\nПревью из\nархива"
+        else:
+            text = "🔷\nНет\nпревью"
+
         self.thumb_label.configure(
-            text="Нет превью",
+            text=text,
             font=self.normal_font,
             fg_color="gray20"
         )
@@ -214,4 +312,7 @@ class FileCard(ctk.CTkFrame):
     def _open_file(self):
         """Открывает расположение файла."""
         if self.on_open and self.file_path:
-            self.on_open(self.file_path)
+            try:
+                self.on_open(self.file_path)
+            except Exception as e:
+                logger.error(f"Ошибка при открытии файла: {e}")

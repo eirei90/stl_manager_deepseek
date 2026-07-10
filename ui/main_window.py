@@ -1,6 +1,7 @@
 """
 Главное окно приложения STL Manager.
-С кнопкой остановки сканирования/рендеринга.
+Интерфейс на CustomTkinter с поддержкой кириллицы,
+отображением файлов из архивов и кнопкой остановки операций.
 """
 
 import customtkinter as ctk
@@ -13,7 +14,6 @@ import os
 import sys
 import platform
 import subprocess
-from PIL import Image
 from typing import Optional, Tuple
 
 # Настройка темы
@@ -86,7 +86,7 @@ class STLManagerApp(ctk.CTk):
         self.current_worker = None
 
         # Настройка окна
-        self.title("STL Manager - Управление 3D моделями (включая архивы)")
+        self.title("STL Manager - Управление 3D моделями")
         self.geometry("1400x900")
         self.minsize(1024, 600)
 
@@ -148,10 +148,10 @@ class STLManagerApp(ctk.CTk):
 
         self.btn_scan = ctk.CTkButton(
             self.toolbar,
-            text="🔍 Сканировать (с архивами)",
+            text="🔍 Сканировать",
             command=self.start_scan,
             state="disabled",
-            width=200,
+            width=160,
             font=self.button_font
         )
 
@@ -160,16 +160,16 @@ class STLManagerApp(ctk.CTk):
             text="🖼 Создать превью",
             command=self.start_render_all,
             state="disabled",
-            width=180,
+            width=160,
             font=self.button_font
         )
 
-        # Кнопка остановки (изначально скрыта)
+        # Кнопка остановки
         self.btn_stop = ctk.CTkButton(
             self.toolbar,
             text="⏹ Остановить",
             command=self.stop_operation,
-            width=150,
+            width=140,
             font=self.stop_font,
             fg_color="#D32F2F",
             hover_color="#B71C1C",
@@ -210,7 +210,9 @@ class STLManagerApp(ctk.CTk):
         # === Панель фильтров ===
         self.filter_frame = ctk.CTkFrame(self, height=50)
 
-        ctk.CTkLabel(self.filter_frame, text="🔎 Поиск:", font=self.normal_font).pack(side="left", padx=5)
+        ctk.CTkLabel(self.filter_frame, text="🔎 Поиск:", font=self.normal_font).pack(
+            side="left", padx=5
+        )
 
         self.entry_search = ctk.CTkEntry(
             self.filter_frame,
@@ -221,7 +223,9 @@ class STLManagerApp(ctk.CTk):
         )
         self.entry_search.pack(side="left", padx=5)
 
-        ctk.CTkLabel(self.filter_frame, text="Полигонов от:", font=self.normal_font).pack(side="left", padx=(20, 5))
+        ctk.CTkLabel(self.filter_frame, text="Полигонов от:", font=self.normal_font).pack(
+            side="left", padx=(20, 5)
+        )
 
         self.entry_min_faces = ctk.CTkEntry(
             self.filter_frame,
@@ -231,7 +235,9 @@ class STLManagerApp(ctk.CTk):
         )
         self.entry_min_faces.pack(side="left", padx=5)
 
-        ctk.CTkLabel(self.filter_frame, text="до:", font=self.normal_font).pack(side="left", padx=5)
+        ctk.CTkLabel(self.filter_frame, text="до:", font=self.normal_font).pack(
+            side="left", padx=5
+        )
 
         self.entry_max_faces = ctk.CTkEntry(
             self.filter_frame,
@@ -253,14 +259,14 @@ class STLManagerApp(ctk.CTk):
         # === Область с карточками ===
         self.cards_frame = ctk.CTkScrollableFrame(
             self,
-            label_text="STL Файлы (включая найденные в архивах)",
+            label_text="STL Файлы",
             label_font=self.title_font
         )
 
         # === Строка состояния ===
         self.status_bar = ctk.CTkLabel(
             self,
-            text=f"Поддерживаются архивы: 7z, RAR, ZIP | Шрифт: {FONT_FAMILY}",
+            text=f"Готов | Шрифт: {FONT_FAMILY}",
             anchor="w",
             font=self.status_font,
             height=25
@@ -273,7 +279,7 @@ class STLManagerApp(ctk.CTk):
 
         # Панель инструментов
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        self.toolbar.grid_columnconfigure(4, weight=1)  # Растягиваем метку пути
+        self.toolbar.grid_columnconfigure(4, weight=1)
 
         self.btn_select_folder.grid(row=0, column=0, padx=5, pady=5)
         self.btn_scan.grid(row=0, column=1, padx=5, pady=5)
@@ -298,6 +304,10 @@ class STLManagerApp(ctk.CTk):
         # Строка состояния
         self.status_bar.grid(row=4, column=0, sticky="ew", padx=5, pady=2)
 
+    # ============================================================
+    # Обработчики кнопок
+    # ============================================================
+
     def select_folder(self):
         """Диалог выбора папки."""
         folder = filedialog.askdirectory(title="Выберите папку с STL файлами и архивами")
@@ -305,9 +315,7 @@ class STLManagerApp(ctk.CTk):
             self.current_root_path = folder
             self.lbl_folder.configure(text=f"📂 {folder}")
             self.btn_scan.configure(state="normal")
-            self.status_bar.configure(
-                text=f"Выбрана папка: {folder} | Поддерживаются архивы: 7z, RAR, ZIP"
-            )
+            self.status_bar.configure(text=f"Выбрана папка: {folder}")
             logger.info(f"Выбрана папка: {folder}")
 
     def start_scan(self):
@@ -320,7 +328,6 @@ class STLManagerApp(ctk.CTk):
 
         from ui.workers import ScanWorker, CancellationToken
 
-        # Создаём токен отмены
         cancel_token = CancellationToken()
 
         self.scan_worker = ScanWorker(
@@ -335,9 +342,73 @@ class STLManagerApp(ctk.CTk):
         self.current_worker = self.scan_worker
         self.scan_worker.start()
 
+    def start_render_all(self):
+        """Запускает рендеринг всех превью."""
+        if not self.current_project_id:
+            messagebox.showwarning("Предупреждение", "Сначала выполните сканирование!")
+            return
+
+        if not self.renderer:
+            messagebox.showwarning("Предупреждение", "Рендерер недоступен!")
+            return
+
+        self._set_ui_state("rendering")
+
+        from ui.workers import RenderWorker, CancellationToken
+
+        cancel_token = CancellationToken()
+
+        self.render_worker = RenderWorker(
+            renderer=self.renderer,
+            db=self.db,
+            project_id=self.current_project_id,
+            cancellation_token=cancel_token,
+            on_progress=self._on_render_progress,
+            on_complete=self._on_render_complete,
+            on_error=self._on_render_error,
+            on_cancelled=self._on_render_cancelled
+        )
+        self.current_worker = self.render_worker
+        self.render_worker.start()
+
+    def stop_operation(self):
+        """Останавливает текущую операцию."""
+        if self.current_worker:
+            logger.info("Пользователь запросил остановку операции")
+            self.btn_stop.configure(state="disabled", text="⏳ Останавливаем...")
+            self.current_worker.cancel()
+
+    # ============================================================
+    # Колбэки прогресса и завершения
+    # ============================================================
+
     def _on_scan_progress(self, current: int, total: int):
-        """Обновление прогресса сканирования."""
         self.after(0, lambda: self._update_progress(current, total, "Сканирование"))
+
+    def _on_scan_complete(self, project_id: int):
+        self.after(0, lambda: self._finish_scan(project_id))
+
+    def _on_scan_error(self, error_msg: str):
+        self.after(0, lambda: self._handle_operation_error("сканирования", error_msg))
+
+    def _on_scan_cancelled(self):
+        self.after(0, lambda: self._handle_cancelled("Сканирование"))
+
+    def _on_render_progress(self, current: int, total: int):
+        self.after(0, lambda: self._update_progress(current, total, "Рендеринг"))
+
+    def _on_render_complete(self, rendered_count: int):
+        self.after(0, lambda: self._finish_render(rendered_count))
+
+    def _on_render_error(self, error_msg: str):
+        self.after(0, lambda: self._handle_operation_error("рендеринга", error_msg))
+
+    def _on_render_cancelled(self):
+        self.after(0, lambda: self._handle_cancelled("Рендеринг"))
+
+    # ============================================================
+    # Внутренние методы обновления UI
+    # ============================================================
 
     def _update_progress(self, current: int, total: int, operation: str):
         """Обновление прогресс-бара."""
@@ -345,12 +416,8 @@ class STLManagerApp(ctk.CTk):
             self.progress_bar.set(current / total)
         self.lbl_progress.configure(text=f"{operation}: {current}/{total}")
 
-    def _on_scan_complete(self, project_id: int):
-        """Завершение сканирования."""
-        self.after(0, lambda: self._finish_scan(project_id))
-
     def _finish_scan(self, project_id: int):
-        """Безопасное завершение сканирования."""
+        """Завершение сканирования."""
         self.current_project_id = project_id
         self.progress_bar.set(1.0)
         self.lbl_progress.configure(text="Сканирование завершено ✓")
@@ -361,19 +428,21 @@ class STLManagerApp(ctk.CTk):
         self._set_ui_state("idle")
         logger.info(f"Сканирование завершено. Project ID: {project_id}")
 
-    def _on_scan_error(self, error_msg: str):
-        """Ошибка сканирования."""
-        self.after(0, lambda: self._handle_operation_error("сканирования", error_msg))
-
-    def _on_scan_cancelled(self):
-        """Сканирование отменено."""
-        self.after(0, lambda: self._handle_cancelled("Сканирование"))
+    def _finish_render(self, rendered_count: int):
+        """Завершение рендеринга."""
+        self.progress_bar.set(1.0)
+        self.lbl_progress.configure(text=f"Превью созданы ({rendered_count} шт.) ✓")
+        self.status_bar.configure(text=f"Создано превью: {rendered_count} файлов")
+        self.refresh_file_list()
+        self.current_worker = None
+        self._set_ui_state("idle")
+        logger.info(f"Рендеринг завершён: {rendered_count} файлов")
 
     def _handle_operation_error(self, operation: str, error_msg: str):
         """Обработка ошибки операции."""
         self.progress_bar.set(0)
         self.lbl_progress.configure(text=f"Ошибка {operation}!")
-        self.status_bar.configure(text=f"Ошибка: {error_msg}")
+        self.status_bar.configure(text=f"Ошибка: {error_msg[:100]}")
         messagebox.showerror("Ошибка", f"Не удалось выполнить {operation}:\n{error_msg}")
         self.current_worker = None
         self._set_ui_state("idle")
@@ -387,111 +456,40 @@ class STLManagerApp(ctk.CTk):
         self._set_ui_state("idle")
         self.refresh_file_list()
 
-    def start_render_all(self):
-        """Запускает рендеринг всех превью."""
-        print("\n" + "=" * 50)
-        print("КНОПКА 'Создать превью' НАЖАТА")
-        print("=" * 50)
+    # ============================================================
+    # Управление состоянием UI
+    # ============================================================
 
-        if not self.current_project_id:
-            print("❌ Нет current_project_id")
-            messagebox.showwarning("Предупреждение", "Сначала выполните сканирование!")
-            return
+    def _set_ui_state(self, state: str):
+        """Управляет состоянием кнопок."""
+        if state in ("scanning", "rendering"):
+            self.btn_select_folder.configure(state="disabled")
+            self.btn_scan.configure(state="disabled")
+            self.btn_render.configure(state="disabled")
+            self.btn_stop.configure(
+                state="normal",
+                text="⏹ Остановить",
+                fg_color="#D32F2F",
+                hover_color="#B71C1C"
+            )
+            self.btn_apply_filter.configure(state="disabled")
+        else:  # idle
+            self.btn_select_folder.configure(state="normal")
+            self.btn_scan.configure(state="normal" if self.current_root_path else "disabled")
 
-        if not self.renderer:
-            print("❌ Рендерер не инициализирован")
-            messagebox.showwarning("Предупреждение", "Рендерер недоступен!")
-            return
+            can_render = bool(self.current_project_id and self.renderer)
+            self.btn_render.configure(state="normal" if can_render else "disabled")
 
-        print(f"✅ project_id: {self.current_project_id}")
-        print(f"✅ renderer: {self.renderer}")
-        print(f"✅ метод рендеринга: {self.renderer.method}")
+            self.btn_stop.configure(state="disabled", text="⏹ Остановить")
+            self.btn_apply_filter.configure(state="normal")
 
-        # Проверяем количество файлов в БД
-        files = self.db.get_files_for_project(self.current_project_id)
-        print(f"✅ Файлов в БД: {len(files)}")
-
-        if len(files) == 0:
-            messagebox.showwarning("Предупреждение", "Нет файлов для рендеринга!")
-            return
-
-        self._set_ui_state("rendering")
-
-        from ui.workers import RenderWorker, CancellationToken
-
-        cancel_token = CancellationToken()
-
-        print("Создание RenderWorker...")
-        self.render_worker = RenderWorker(
-            renderer=self.renderer,
-            db=self.db,
-            project_id=self.current_project_id,
-            cancellation_token=cancel_token,
-            on_progress=self._on_render_progress,
-            on_complete=self._on_render_complete,
-            on_error=self._on_render_error,
-            on_cancelled=self._on_render_cancelled
-        )
-        self.current_worker = self.render_worker
-
-        print("Запуск потока рендеринга...")
-        self.render_worker.start()
-        print("Поток запущен!\n")
-
-    def _on_render_progress(self, current: int, total: int):
-        """Обновление прогресса рендеринга."""
-        print(f"  Прогресс рендеринга: {current}/{total}")
-        self.after(0, lambda: self._update_render_progress(current, total))
-
-    def _update_render_progress(self, current: int, total: int):
-        """Безопасное обновление прогресса рендеринга."""
-        if total > 0:
-            self.progress_bar.set(current / total)
-        self.lbl_progress.configure(text=f"Создание превью: {current}/{total}")
-
-    def _on_render_complete(self, rendered_count: int):
-        """Завершение рендеринга."""
-        print(f"\n✅ Рендеринг завершён! Создано превью: {rendered_count}")
-        self.after(0, lambda: self._finish_render(rendered_count))
-
-    def _finish_render(self, rendered_count: int):
-        """Безопасное завершение рендеринга."""
-        self.progress_bar.set(1.0)
-        self.lbl_progress.configure(text=f"Превью созданы ({rendered_count} шт.) ✓")
-        self.status_bar.configure(text=f"Создано превью: {rendered_count} файлов")
-        self.refresh_file_list()
-        self.current_worker = None
-        self._set_ui_state("idle")
-
-    def _on_render_error(self, error_msg: str):
-        """Ошибка рендеринга."""
-        print(f"\n❌ Ошибка рендеринга: {error_msg}")
-        self.after(0, lambda: self._handle_render_error(error_msg))
-
-    def _handle_render_error(self, error_msg: str):
-        """Безопасная обработка ошибки рендеринга."""
-        self.lbl_progress.configure(text="Ошибка создания превью!")
-        self.status_bar.configure(text=f"Ошибка: {error_msg}")
-        messagebox.showerror("Ошибка", f"Не удалось создать превью:\n{error_msg}")
-        self.current_worker = None
-        self._set_ui_state("idle")
-
-    def _on_render_cancelled(self):
-        """Рендеринг отменён."""
-        print("\n⏹ Рендеринг отменён")
-        self.after(0, lambda: self._handle_cancelled("Рендеринг"))
-
-    def stop_operation(self):
-        """Останавливает текущую операцию."""
-        if self.current_worker:
-            logger.info("Пользователь запросил остановку операции")
-            self.btn_stop.configure(state="disabled", text="⏳ Останавливаем...")
-            self.current_worker.cancel()
-        else:
-            logger.warning("Нет активной операции для остановки")
+    # ============================================================
+    # Отображение файлов
+    # ============================================================
 
     def refresh_file_list(self):
         """Обновляет список карточек файлов."""
+        # Очищаем текущие карточки
         for widget in self.cards_frame.winfo_children():
             widget.destroy()
 
@@ -505,6 +503,7 @@ class STLManagerApp(ctk.CTk):
             empty_label.pack(padx=20, pady=50)
             return
 
+        # Получаем параметры фильтров
         name_filter = self.search_var.get().strip() or None
 
         try:
@@ -517,6 +516,7 @@ class STLManagerApp(ctk.CTk):
         except ValueError:
             max_faces = None
 
+        # Загружаем файлы из БД
         files = self.db.get_files_for_project(
             self.current_project_id,
             name_filter=name_filter,
@@ -562,19 +562,25 @@ class STLManagerApp(ctk.CTk):
                 col = 0
                 row += 1
 
-        # Считаем файлы с превью
-        files_with_thumb = sum(1 for f in files if f[12] == 1)  # has_thumbnail
+        # Статистика для строки состояния
+        total = len(files)
+        with_thumb = sum(1 for f in files if len(f) > 12 and f[12] == 1)
+        from_archive = sum(1 for f in files if f[2].startswith("[ARCHIVE]"))
+        normal = total - from_archive
+
         self.status_bar.configure(
-            text=f"Файлов: {len(files)} | С превью: {files_with_thumb} | Шрифт: {FONT_FAMILY}"
+            text=f"Всего: {total} | STL: {normal} | Архив: {from_archive} | С превью: {with_thumb}"
         )
 
     def _open_file_location(self, file_path: str):
-        """Открывает расположение файла."""
+        """Открывает расположение файла или архива."""
         if file_path.startswith("[ARCHIVE]"):
+            # Для файлов из архивов
+            file_name = file_path.replace("[ARCHIVE] ", "")
             messagebox.showinfo(
                 "Файл в архиве",
-                f"Этот файл находится внутри архива:\n{file_path}\n\n"
-                "Для доступа к оригиналу извлеките архив вручную."
+                f"Этот файл находится внутри архива:\n{file_name}\n\n"
+                "Найдите архив в папке проекта и распакуйте его."
             )
             return
 
@@ -595,42 +601,8 @@ class STLManagerApp(ctk.CTk):
             logger.error(f"Не удалось открыть папку: {e}")
             messagebox.showerror("Ошибка", f"Не удалось открыть папку:\n{e}")
 
-    def _set_ui_state(self, state: str):
-        """Управляет состоянием кнопок."""
-        print(f"\n[_set_ui_state] Состояние: {state}")
-        print(f"  current_root_path: {self.current_root_path}")
-        print(f"  current_project_id: {self.current_project_id}")
-        print(f"  renderer: {self.renderer}")
-
-        if state == "scanning" or state == "rendering":
-            self.btn_select_folder.configure(state="disabled")
-            self.btn_scan.configure(state="disabled")
-            self.btn_render.configure(state="disabled")
-            self.btn_stop.configure(
-                state="normal",
-                text="⏹ Остановить",
-                fg_color="#D32F2F",
-                hover_color="#B71C1C"
-            )
-            self.btn_apply_filter.configure(state="disabled")
-            print("  Кнопки: выбор/скан/рендер/фильтр - disabled, стоп - enabled")
-        else:  # idle
-            self.btn_select_folder.configure(state="normal")
-            self.btn_scan.configure(state="normal" if self.current_root_path else "disabled")
-
-            # Проверяем, можно ли включить кнопку рендеринга
-            can_render = bool(self.current_project_id and self.renderer)
-            self.btn_render.configure(state="normal" if can_render else "disabled")
-
-            self.btn_stop.configure(state="disabled", text="⏹ Остановить")
-            self.btn_apply_filter.configure(state="normal")
-
-            print(f"  Кнопки: рендер={'normal' if can_render else 'disabled'}")
-            print(f"    project_id={self.current_project_id}, renderer={bool(self.renderer)}")
-
     def on_closing(self):
         """Действия при закрытии окна."""
-        # Останавливаем текущую операцию
         if self.current_worker:
             logger.info("Закрытие окна: остановка текущей операции")
             self.current_worker.cancel()
