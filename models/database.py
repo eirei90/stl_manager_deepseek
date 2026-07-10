@@ -5,6 +5,7 @@
 
 import sqlite3
 import logging
+import os
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -189,102 +190,103 @@ class Database:
         return cursor.fetchall()
 
     def get_directory_tree(self, project_id: int):
-        """Возвращает структуру папок и файлов для дерева."""
+        """Строит дерево, полностью дублирующее структуру файловой системы."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
+        # Получаем корневую папку
         cursor.execute("SELECT root_path FROM projects WHERE id = ?", (project_id,))
         root = cursor.fetchone()
-        root_path = root[0] if root else ""
+        if not root:
+            return []
+
+        root_path = root[0]
         root_name = Path(root_path).name if root_path else "Проект"
 
+        # Получаем файлы из БД
         cursor.execute("""
             SELECT file_name, relative_path, is_valid,
                    CASE WHEN format_type = 'archive' THEN 2
                         WHEN file_path LIKE '[ARCHIVE]%' THEN 1
                         ELSE 0 END as file_type
             FROM files WHERE project_id = ?
-            ORDER BY file_type DESC, relative_path, file_name
         """, (project_id,))
-        files = cursor.fetchall()
 
-        if not files:
-            return []
-
-        tree = {}
-        for file_name, rel_path, is_valid, file_type in files:
-            # Определяем части пути
-            if rel_path and rel_path != '.':
-                parts = Path(rel_path).parts
-            else:
-                parts = []  # <-- ВОТ ЭТО БЫЛО ПРОПУЩЕНО
-
-            current = tree
-            for part in parts:
-                if part not in current:
-                    current[part] = {}
-                current = current[part]
-
-            if '__files' not in current:
-                current['__files'] = []
-
-            # Префикс в зависимости от типа
-            if file_type == 2:
-                prefix = "📦 "  # Архив
-            elif file_type == 1:
-                prefix = "📄 "  # Файл из архива
-            else:
-                prefix = "📄 "  # Обычный файл
-
+        files_by_dir = {}
+        for file_name, rel_path, is_valid, file_type in cursor.fetchall():
+            dir_key = rel_path if rel_path and rel_path != '.' else ''
+            if dir_key not in files_by_dir:
+                files_by_dir[dir_key] = []
+            prefix = "📦 " if file_type == 2 else "📄 "
             if not is_valid:
                 prefix = "⚠ "
-
-            current['__files'].append({
+            files_by_dir[dir_key].append({
                 'name': file_name,
                 'full_name': f"{prefix}{file_name}",
-                'file_type': file_type,
-                'is_valid': bool(is_valid)
+                'is_valid': bool(is_valid),
+                'file_type': file_type
             })
 
-        def build_tree(node, path=''):
+        # Рекурсивно обходим файловую систему
+        def scan_directory(dir_path: str, current_rel: str):
             result = []
-            for name, children in sorted(node.items()):
-                if name == '__files':
-                    continue
-                full = f"{path}/{name}" if path else name
 
-                def count(n):
-                    c = len(n.get('__files', []))
-                    for k, v in n.items():
-                        if k != '__files':
-                            c += count(v)
-                    return c
+            try:
+                items = sorted(os.listdir(dir_path))
+            except (PermissionError, FileNotFoundError):
+                return result
+
+            # Сначала папки
+            for item in items:
+                full_path = os.path.join(dir_path, item)
+                if not os.path.isdir(full_path):
+                    continue
+                if item.startswith('.') or item == '__pycache__':
+                    continue
+                if item == '.thumbs':
+                    continue
+
+                rel = f"{current_rel}/{item}" if current_rel else item
+                children = scan_directory(full_path, rel)
+
+                file_count = len(files_by_dir.get(rel, []))
+                for child in children:
+                    if child.get('is_dir'):
+                        file_count += child.get('file_count', 0)
 
                 result.append({
-                    'name': name, 'path': full, 'is_dir': True,
-                    'file_count': count(children),
-                    'children': build_tree(children, full)
+                    'name': item,
+                    'path': rel,
+                    'is_dir': True,
+                    'file_count': file_count,
+                    'children': children
                 })
-            for f in sorted(node.get('__files', []), key=lambda x: x['name']):
+
+            # Затем файлы из БД
+            dir_files = files_by_dir.get(current_rel, [])
+            for f in sorted(dir_files, key=lambda x: x['name']):
                 result.append({
                     'name': f['full_name'],
-                    'path': f"{path}/{f['name']}" if path else f['name'],
+                    'path': f"{current_rel}/{f['name']}" if current_rel else f['name'],
                     'is_dir': False,
                     'file_type': f.get('file_type', 0),
                     'is_valid': f['is_valid'],
                     'children': []
                 })
+
             return result
 
-        tree_list = build_tree(tree, '')
+        # Сканируем корень
+        tree_children = scan_directory(root_path, '')
+        total_files = sum(len(v) for v in files_by_dir.values())
 
         return [{
             'name': f"📂 {root_name}",
             'path': root_name,
             'is_dir': True,
-            'file_count': len(files),
-            'children': tree_list
+            'file_count': total_files,
+            'children': tree_children
         }]
 
-        logger.info(f"Дерево построено: корень '{root_name}', файлов: {len(files)}")
-        return [root]
+        logger.info(f"Дерево построено: корень '{root_name}', папок: {len(tree_children)}, файлов: {total_files}")
+        return root_node

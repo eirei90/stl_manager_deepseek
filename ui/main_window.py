@@ -399,29 +399,26 @@ class STLManagerApp(ctk.CTk):
     def _on_tree_select(self, path):
         """Обработчик выбора элемента в дереве."""
         if not path:
+            self.selected_path = None
+            self.search_var.set("")
+            self.refresh_files()
             return
 
         clean_path = path
         for prefix in ["📂 ", "📁 ", "📄 ", "📦 ", "⚠ "]:
             clean_path = clean_path.replace(prefix, "")
-
         clean_path = re.sub(r'\s*\(\d+\)\s*$', '', clean_path).strip()
 
         logger.info(f"Выбран путь: {path} -> чистый: {clean_path}")
 
-        # Проверяем, является ли это файлом (есть расширение)
         is_file = bool(Path(clean_path).suffix)
 
         if is_file:
-            # Это файл (включая .zip, .stl) — фильтруем по имени
             self.selected_path = None
-            # Убираем расширение для поиска
-            search_name = Path(clean_path).stem
-            self.search_var.set(search_name)
+            self.search_var.set(Path(clean_path).stem)
         else:
-            # Это папка — фильтруем по relative_path
             self.selected_path = clean_path
-            self.search_var.set("")  # Сбрасываем поиск
+            self.search_var.set("")
 
         self.refresh_files()
 
