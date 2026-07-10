@@ -10,7 +10,6 @@ import logging
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional, List
-import numpy as np
 
 from services.archive_utils import ArchiveExtractor
 
@@ -29,12 +28,10 @@ class STLScanner:
     def __init__(self, db):
         self.db = db
         self.archive_extractor = ArchiveExtractor()
+        self._temp_files = []
 
     def detect_stl_format(self, file_path: str) -> Optional[str]:
-        """
-        Определяет формат STL: бинарный или ASCII.
-        Читает первые байты файла.
-        """
+        """Определяет формат STL: бинарный или ASCII."""
         try:
             with open(file_path, 'rb') as f:
                 header = f.read(5)
@@ -56,13 +53,9 @@ class STLScanner:
             return None
 
     def parse_stl_metadata(self, file_path: str) -> Dict:
-        """
-        Извлекает метаданные STL-файла.
-        Использует trimesh для геометрии, если доступен.
-        """
+        """Извлекает метаданные STL-файла."""
         path = Path(file_path)
 
-        # Проверяем существование файла (может быть временным из архива)
         if not path.exists():
             return {
                 'file_name': path.name,
@@ -121,99 +114,155 @@ class STLScanner:
     def _find_stl_files(self, root_path: str) -> List[str]:
         """
         Находит все STL-файлы в директории и вложенных архивах.
-
-        Args:
-            root_path: Корневая директория
-
-        Returns:
-            Список путей к STL-файлам (включая временные из архивов)
         """
         stl_files = []
-        temp_files = []  # Временные файлы из архивов (для очистки)
+        temp_files = []
+
+        root_path = str(Path(root_path).resolve())
+        logger.info(f"Поиск STL в: {root_path}")
+
+        # Счётчики для статистики
+        stl_count = 0
+        archive_count = 0
+        stl_in_archives = 0
 
         for dirpath, _, filenames in os.walk(root_path):
+            logger.debug(f"  Просмотр директории: {dirpath}")
+
             for fname in filenames:
                 full_path = os.path.join(dirpath, fname)
                 ext = Path(fname).suffix.lower()
 
                 if ext == '.stl':
-                    # Обычный STL-файл
                     stl_files.append(full_path)
+                    stl_count += 1
+                    if stl_count <= 5:  # Логируем первые 5
+                        logger.info(f"  Найден STL: {fname}")
 
                 elif self.archive_extractor.is_archive(full_path):
-                    # Архив — ищем STL внутри
-                    logger.info(f"Обнаружен архив: {fname}")
+                    archive_count += 1
+                    logger.info(f"  Найден архив: {fname}")
 
-                    # Сначала просто считаем количество STL в архиве
-                    stl_in_archive = self.archive_extractor.list_stl_files(full_path)
-                    logger.info(f"  Содержит {len(stl_in_archive)} STL-файлов")
+                    # Получаем список STL в архиве
+                    stl_in = self.archive_extractor.list_stl_files(full_path)
+                    logger.info(f"    Содержит STL: {len(stl_in)}")
 
-                    # Извлекаем и добавляем в список
-                    for extracted_path in self.archive_extractor.extract_stl_files(full_path):
-                        stl_files.append(extracted_path)
-                        temp_files.append(extracted_path)
+                    if len(stl_in) > 0:
+                        # Извлекаем STL из архива
+                        for extracted_path in self.archive_extractor.extract_stl_files(full_path):
+                            stl_files.append(extracted_path)
+                            temp_files.append(extracted_path)
+                            stl_in_archives += 1
 
-        # Сохраняем список временных файлов для последующей очистки
+        logger.info(f"Итого найдено:")
+        logger.info(f"  STL файлов: {stl_count}")
+        logger.info(f"  Архивов: {archive_count}")
+        logger.info(f"  STL в архивах: {stl_in_archives}")
+        logger.info(f"  Всего для обработки: {len(stl_files)}")
+
         self._temp_files = temp_files
-
         return stl_files
 
     def scan_directory(self, root_path: str, progress_callback=None, cancel_token=None) -> int:
         """
         Рекурсивно сканирует директорию, включая архивы.
-        Поддерживает отмену через CancellationToken.
-
-        Args:
-            root_path: Корневая папка для сканирования
-            progress_callback: Функция(current, total) для обновления прогресса
-            cancel_token: Токен для отмены операции (CancellationToken)
-
-        Returns:
-            project_id: ID проекта в БД
         """
         root_path = str(Path(root_path).resolve())
+        logger.info(f"=" * 50)
+        logger.info(f"НАЧАЛО СКАНИРОВАНИЯ: {root_path}")
+        logger.info(f"=" * 50)
+
+        # Проверяем существование директории
+        if not os.path.exists(root_path):
+            logger.error(f"Директория не существует: {root_path}")
+            return 0
+
+        if not os.path.isdir(root_path):
+            logger.error(f"Это не директория: {root_path}")
+            return 0
+
+        # Выводим содержимое для отладки
+        logger.info(f"Содержимое директории:")
+        for item in os.listdir(root_path):
+            item_path = os.path.join(root_path, item)
+            if os.path.isfile(item_path):
+                size = os.path.getsize(item_path)
+                logger.info(f"  Файл: {item} ({size} байт)")
+            elif os.path.isdir(item_path):
+                logger.info(f"  Папка: {item}")
+
         project_id = self.db.add_project(root_path)
+        logger.info(f"Project ID: {project_id}")
 
         # Собираем список всех STL-файлов
-        logger.info(f"Начинаем сканирование: {root_path}")
         stl_files = self._find_stl_files(root_path)
-
         total = len(stl_files)
-        logger.info(f"Найдено {total} STL-файлов (включая извлечённые из архивов)")
+
+        if total == 0:
+            logger.warning(f"STL-файлы не найдены в {root_path}")
+            # Обновляем статистику (0 файлов)
+            self.db.update_project_stats(project_id)
+            # Возвращаем project_id, чтобы UI мог показать "Файлов: 0"
+            return project_id
+
+        # Выводим все найденные файлы
+        logger.info(f"Найдено {total} STL-файлов:")
+        for i, f in enumerate(stl_files[:10]):
+            logger.info(f"  [{i + 1}] {f}")
+        if total > 10:
+            logger.info(f"  ... и ещё {total - 10}")
 
         # Обрабатываем каждый файл
+        processed = 0
         for idx, file_path in enumerate(stl_files, 1):
             # Проверяем отмену
             if cancel_token and cancel_token.is_cancelled:
-                logger.info(f"Сканирование прервано пользователем. Обработано: {idx - 1}/{total}")
+                logger.info(f"Сканирование прервано. Обработано: {processed}/{total}")
                 break
 
             try:
+                logger.debug(f"[{idx}/{total}] Обработка: {Path(file_path).name}")
+
                 metadata = self.parse_stl_metadata(file_path)
 
-                is_temp = hasattr(self, '_temp_files') and file_path in self._temp_files
+                # Проверяем, является ли файл временным (из архива)
+                is_temp = file_path in self._temp_files
 
                 if is_temp:
                     original_name = Path(file_path).name
                     metadata['file_path'] = f"[ARCHIVE] {original_name}"
-                    logger.debug(f"Обработан файл из архива: {original_name}")
+                    logger.debug(f"  Это файл из архива: {original_name}")
 
-                self.db.insert_file(project_id, metadata)
+                # Сохраняем в БД
+                file_id = self.db.insert_file(project_id, metadata)
+                processed += 1
 
                 if progress_callback:
                     progress_callback(idx, total)
 
-                logger.debug(f"[{idx}/{total}] Обработан: {Path(file_path).name}")
+                if idx % 5 == 0 or idx == total:
+                    logger.info(f"  Прогресс: {idx}/{total} (сохранено: {processed})")
 
             except Exception as e:
-                logger.error(f"Критическая ошибка при обработке {file_path}: {e}")
+                logger.error(f"Ошибка обработки {file_path}: {e}", exc_info=True)
                 continue
 
         # Обновляем статистику проекта
         self.db.update_project_stats(project_id)
 
+        # Проверяем, что файлы сохранились
+        check_files = self.db.get_files_for_project(project_id)
+        logger.info(f"Проверка: в БД сохранено {len(check_files)} файлов для проекта {project_id}")
+
         # Очищаем временные файлы
         self.archive_extractor.cleanup()
+
+        logger.info(f"=" * 50)
+        logger.info(f"СКАНИРОВАНИЕ ЗАВЕРШЕНО")
+        logger.info(f"  Проект ID: {project_id}")
+        logger.info(f"  Обработано: {processed}/{total}")
+        logger.info(f"  В БД: {len(check_files)} записей")
+        logger.info(f"=" * 50)
 
         return project_id
 
