@@ -1,6 +1,6 @@
 """
-Модуль сканирования STL-файлов.
-Рекурсивный обход, поиск в архивах, извлечение метаданных.
+Модуль сканирования STL/OBJ-файлов.
+Оптимизированная версия: один проход os.walk для всего.
 """
 
 import os
@@ -22,12 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class STLScanner:
-    """Сканер STL-файлов."""
+    """Сканер STL/OBJ-файлов."""
 
     def __init__(self, db):
         self.db = db
         self.archive_extractor = ArchiveExtractor()
-        self._temp_files = []
 
     def detect_stl_format(self, file_path: str) -> Optional[str]:
         try:
@@ -48,8 +47,19 @@ class STLScanner:
             return None
 
     def parse_stl_metadata(self, file_path: str, root_path: str) -> Optional[Dict]:
-        # ... определение relative_dir ...
-        # Быстрый разбор бинарного STL для количества граней
+        """Быстрый сбор метаданных без trimesh для скорости."""
+        if not os.path.exists(file_path):
+            return None
+
+        stat = os.stat(file_path)
+        root = os.path.abspath(root_path)
+        full = os.path.abspath(file_path)
+        relative = os.path.relpath(full, root)
+        relative_dir = os.path.dirname(relative)
+        if relative_dir == '.':
+            relative_dir = ''
+
+        # Быстрый подсчёт граней для бинарных STL
         face_count = 0
         format_type = self.detect_stl_format(file_path)
         if format_type == 'binary':
@@ -61,12 +71,10 @@ class STLScanner:
                         face_count = struct.unpack('<I', data)[0]
             except:
                 pass
-        # Если не бинарный или не удалось, оставляем 0 (trimesh догрузит позже при необходимости)
-        # Но можно загружать trimesh только если нужен bounding box/volume
-        # Для скорости пропустим trimesh при сканировании
+
         metadata = {
             'file_name': os.path.basename(file_path),
-            'file_path': os.path.abspath(file_path),
+            'file_path': full,
             'relative_path': relative_dir,
             'file_size': stat.st_size,
             'modified_date': datetime.fromtimestamp(stat.st_mtime).isoformat(),
@@ -76,21 +84,29 @@ class STLScanner:
             'bbox_x': 0.0, 'bbox_y': 0.0, 'bbox_z': 0.0,
             'volume': 0.0, 'surface_area': 0.0
         }
-        # Опционально: включить trimesh для детальных метаданных (медленно)
-        # if TRIMESH_AVAILABLE and metadata['is_valid']:
-        #    ... (оставьте, если нужны размеры, иначе закомментируйте)
+
+        # trimesh оставлен для совместимости, но не обязателен при сканировании
+        if TRIMESH_AVAILABLE and face_count == 0:
+            try:
+                mesh = trimesh.load(file_path, file_type='stl')
+                if mesh and hasattr(mesh, 'faces') and len(mesh.faces) > 0:
+                    metadata['face_count'] = len(mesh.faces)
+            except:
+                pass
+
         return metadata
 
     def scan_directory(self, root_path: str, progress_callback=None, cancel_token=None) -> int:
+        """Однопроходное сканирование: ищет STL/OBJ и архивы одновременно."""
         root_path = os.path.abspath(root_path)
         logger.info(f"Сканирование: {root_path}")
+
         project_id = self.db.add_project(root_path)
 
-        stl_files = []
-        self._temp_files = []
-        archives = []  # (full_path, relative_dir)
+        stl_files = []          # обычные файлы
+        archive_entries = []    # информация об архивах
 
-        # Один обход директорий
+        # ОДИН обход файловой системы
         for dirpath, _, filenames in os.walk(root_path):
             if cancel_token and cancel_token.is_cancelled:
                 break
@@ -104,12 +120,12 @@ class STLScanner:
                     rel_dir = os.path.dirname(rel)
                     if rel_dir == '.':
                         rel_dir = ''
-                    archives.append((full_path, rel_dir))
+                    archive_entries.append((fname, full_path, rel_dir))
 
-        total = len(stl_files) + len(archives)
+        total = len(stl_files) + len(archive_entries)
         processed = 0
 
-        # Обработка STL/OBJ
+        # Обработка обычных файлов
         for file_path in stl_files:
             if cancel_token and cancel_token.is_cancelled:
                 break
@@ -123,12 +139,11 @@ class STLScanner:
             if progress_callback:
                 progress_callback(processed, total)
 
-        # Обработка архивов (добавляем записи БД, извлекаем только метаданные, не файлы)
-        for archive_path, rel_dir in archives:
+        # Обработка архивов
+        for fname, archive_path, rel_dir in archive_entries:
             if cancel_token and cancel_token.is_cancelled:
                 break
             try:
-                fname = os.path.basename(archive_path)
                 archive_metadata = {
                     'file_name': fname,
                     'file_path': f"[ARCHIVE] {fname}",
@@ -148,55 +163,7 @@ class STLScanner:
             if progress_callback:
                 progress_callback(processed, total)
 
-        # Извлекаем STL из архивов для каталогизации (но не сохраняем в БД как отдельные файлы)
-        # если нужно только количество граней, можно пропустить для ускорения
-        # Оставляем опционально: закомментировать для скорости
-        # self._extract_and_catalog_archives(archives, root_path, project_id)
-
         self.db.update_project_stats(project_id)
         self.archive_extractor.cleanup()
-        self._temp_files = []
-        logger.info(f"Готово: {processed}/{total}")
-        return project_id
-
-    def scan_directory(self, root_path: str, progress_callback=None, cancel_token=None) -> int:
-        root_path = os.path.abspath(root_path)
-        logger.info(f"Сканирование: {root_path}")
-
-        project_id = self.db.add_project(root_path)
-        stl_files = self._find_stl_files(root_path)
-        total = len(stl_files)
-
-        if total == 0:
-            self._add_archive_entries(root_path, project_id, progress_callback, cancel_token)
-            self.db.update_project_stats(project_id)
-            self.archive_extractor.cleanup()
-            return project_id
-
-        processed = 0
-        for idx, file_path in enumerate(stl_files, 1):
-            if cancel_token and cancel_token.is_cancelled:
-                break
-            try:
-                if not os.path.exists(file_path):
-                    continue
-                metadata = self.parse_stl_metadata(file_path, root_path)
-                if metadata is None:
-                    continue
-                if file_path in self._temp_files:
-                    metadata['file_path'] = f"[ARCHIVE] {os.path.basename(file_path)}"
-                    # Сохраняем relative_path из архива
-                self.db.insert_file(project_id, metadata)
-                processed += 1
-                if progress_callback:
-                    progress_callback(idx, total)
-            except Exception as e:
-                logger.error(f"Ошибка: {e}")
-
-        self._add_archive_entries(root_path, project_id, progress_callback, cancel_token)
-        self.db.update_project_stats(project_id)
-        self.archive_extractor.cleanup()
-        self._temp_files = []
-
         logger.info(f"Готово: {processed}/{total}")
         return project_id
