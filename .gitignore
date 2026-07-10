@@ -5,3 +5,6 @@ services/__pycache__/
 ui/__pycache__/
 .venv/
 .idea/
+utils/__pycache__/
+venv/
+stl_manager.log
