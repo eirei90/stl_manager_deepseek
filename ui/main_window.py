@@ -91,6 +91,9 @@ class STLManagerApp(ctk.CTk):
         self._create_widgets()
         self._create_layout()
 
+        # Загружаем последний проект после отрисовки интерфейса
+        self.after(300, self._load_last_project)
+
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
         logger.info("Окно создано")
 
@@ -149,7 +152,7 @@ class STLManagerApp(ctk.CTk):
             on_select=self._on_tree_select,
             font_family=FONT_FAMILY,
             font_size=FONT_SIZE,
-            width=250  # фиксированная ширина
+            width=250
         )
 
         # Карточки справа
@@ -162,27 +165,18 @@ class STLManagerApp(ctk.CTk):
             text="Готов",
             anchor="w",
             font=self.small_font,
-            height=25  # фиксированная высота
+            height=25
         )
 
     def _create_layout(self):
-        """Размещает виджеты с правильными пропорциями."""
+        """Размещает виджеты."""
         self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(0, weight=0)
+        self.grid_rowconfigure(1, weight=0)
+        self.grid_rowconfigure(2, weight=0)
+        self.grid_rowconfigure(3, weight=1)
+        self.grid_rowconfigure(4, weight=0)
 
-        # Строки:
-        # 0 - тулбар (фиксированная высота)
-        # 1 - прогресс (фиксированная)
-        # 2 - фильтры (фиксированная)
-        # 3 - основной контент (растягивается)
-        # 4 - статус (фиксированная)
-
-        self.grid_rowconfigure(0, weight=0)  # тулбар - не растягивается
-        self.grid_rowconfigure(1, weight=0)  # прогресс
-        self.grid_rowconfigure(2, weight=0)  # фильтры
-        self.grid_rowconfigure(3, weight=1)  # основной контент - растягивается
-        self.grid_rowconfigure(4, weight=0)  # статус - НЕ растягивается
-
-        # Тулбар
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         self.toolbar.grid_columnconfigure(4, weight=1)
 
@@ -192,36 +186,62 @@ class STLManagerApp(ctk.CTk):
         self.btn_stop.grid(row=0, column=3, padx=3)
         self.lbl_folder.grid(row=0, column=4, padx=10, sticky="w")
 
-        # Прогресс-бар
         self.progress.grid(row=1, column=0, sticky="ew", padx=10, pady=(5, 0))
         self.lbl_progress.grid(row=1, column=0, sticky="e", padx=15, pady=(5, 0))
 
-        # Фильтры
         self.filter_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
-        # Основной контент
         self.main_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=2)
-        self.main_frame.grid_columnconfigure(1, weight=1)  # карточки растягиваются
-        self.main_frame.grid_rowconfigure(0, weight=1)     # и дерево и карточки растягиваются
+        self.main_frame.grid_columnconfigure(1, weight=1)
+        self.main_frame.grid_rowconfigure(0, weight=1)
 
-        # Дерево слева
         self.tree_panel.grid(row=0, column=0, sticky="ns", padx=(0, 5))
-
-        # Карточки справа
         self.cards_frame.grid(row=0, column=1, sticky="nsew")
 
-        # Статус-бар (фиксированная высота 25px)
         self.status.grid(row=4, column=0, sticky="ew", padx=5, pady=2)
-        self.status.configure(height=25)  # фиксируем высоту
+        self.status.configure(height=25)
+
+    def _load_last_project(self):
+        """Загружает последний проект при запуске."""
+        try:
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+
+            cursor.execute("""
+                SELECT id, root_path FROM projects
+                WHERE total_files > 0
+                ORDER BY scan_date DESC
+                LIMIT 1
+            """)
+            result = cursor.fetchone()
+
+            if result:
+                project_id, root_path = result
+                self.current_project_id = project_id
+                self.current_root_path = root_path
+
+                self.lbl_folder.configure(text=f"📂 {root_path}")
+                self.btn_scan.configure(state="normal")
+                self.btn_render.configure(state="normal")
+
+                self.refresh_tree()
+                self.refresh_files()
+
+                logger.info(f"Загружен проект: {root_path} (ID: {project_id})")
+                self.status.configure(text=f"Загружен проект: {Path(root_path).name}")
+            else:
+                logger.info("Нет сохранённых проектов")
+
+        except Exception as e:
+            logger.error(f"Ошибка загрузки проекта: {e}")
 
     def select_folder(self):
         """Диалог выбора папки."""
         import subprocess
         import platform
-        
+
         folder = None
-        
-        # В Linux используем Zenity для нативного диалога со скроллом
+
         if platform.system() == 'Linux':
             try:
                 result = subprocess.run(
@@ -233,18 +253,16 @@ class STLManagerApp(ctk.CTk):
                 if result.returncode == 0:
                     folder = result.stdout.strip()
             except FileNotFoundError:
-                logger.warning("Zenity не установлен. Используйте: sudo pacman -S zenity")
+                logger.warning("Zenity не установлен")
             except Exception as e:
                 logger.error(f"Ошибка Zenity: {e}")
-        
-        # Fallback на стандартный диалог (Windows/macOS или если Zenity не сработал)
+
         if not folder:
-            from tkinter import filedialog
             folder = filedialog.askdirectory(
                 title="Выберите папку с STL файлами и архивами",
                 initialdir=self.current_root_path or os.path.expanduser('~')
             )
-        
+
         if folder:
             self.current_root_path = folder
             self.lbl_folder.configure(text=f"📂 {folder}")
@@ -323,21 +341,9 @@ class STLManagerApp(ctk.CTk):
             self.btn_stop.configure(state="disabled")
 
     def refresh_tree(self):
-        """Обновляет дерево каталога."""
-        logger.info(f"refresh_tree вызван, project_id={self.current_project_id}")
-
-        if not self.current_project_id:
-            # Показываем заглушку
-            self.tree_panel.build_tree([])
-            return
-
-        try:
+        if self.current_project_id:
             tree = self.db.get_directory_tree(self.current_project_id)
-            logger.info(f"Получено дерево: {len(tree)} элементов")
             self.tree_panel.build_tree(tree)
-        except Exception as e:
-            logger.error(f"Ошибка построения дерева: {e}")
-            self.tree_panel.build_tree([])
 
     def _on_tree_select(self, path):
         self.selected_path = path
@@ -348,6 +354,12 @@ class STLManagerApp(ctk.CTk):
             w.destroy()
 
         if not self.current_project_id:
+            ctk.CTkLabel(
+                self.cards_frame,
+                text="Нет файлов для отображения.\nВыполните сканирование папки.",
+                font=self.normal_font,
+                text_color="gray"
+            ).pack(padx=20, pady=50)
             return
 
         name = self.search_var.get().strip() or None
@@ -375,10 +387,12 @@ class STLManagerApp(ctk.CTk):
             self.cards_frame.grid_columnconfigure(i, weight=1, uniform="card")
 
         for fd in files:
-            card = FileCard(self.cards_frame, fd,
-                          on_open=self._open_location,
-                          on_preview=self._open_preview,
-                          font_family=FONT_FAMILY, font_size=FONT_SIZE)
+            card = FileCard(
+                self.cards_frame, fd,
+                on_open=self._open_location,
+                on_preview=self._open_preview,
+                font_family=FONT_FAMILY, font_size=FONT_SIZE
+            )
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
             col += 1
             if col >= maxc:
@@ -388,7 +402,11 @@ class STLManagerApp(ctk.CTk):
         total = len(files)
         thumbs = sum(1 for f in files if len(f) > 12 and f[12])
         archives = sum(1 for f in files if str(f[2]).startswith("[ARCHIVE]"))
-        self.status.configure(text=f"Всего: {total} | STL: {total-archives} | Архив: {archives} | Превью: {thumbs}")
+        existing = sum(1 for f in files if len(f) > 15 and f[15] == 'existing')
+
+        self.status.configure(
+            text=f"Всего: {total} | STL: {total-archives} | Архив: {archives} | Превью: {thumbs} | Готовых: {existing}"
+        )
 
     def _open_location(self, path):
         if path.startswith("[ARCHIVE]"):
