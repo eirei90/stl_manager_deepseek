@@ -189,53 +189,119 @@ class Database:
         return cursor.fetchall()
 
     def get_directory_tree(self, project_id: int) -> List[dict]:
-        """Возвращает структуру директорий для дерева."""
+        """Возвращает полную структуру директорий и файлов для дерева."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Получаем все относительные пути
+        # Получаем корневую папку проекта
+        cursor.execute("SELECT root_path FROM projects WHERE id = ?", (project_id,))
+        root_result = cursor.fetchone()
+        root_path = root_result[0] if root_result else ""
+        root_name = Path(root_path).name if root_path else "Проект"
+
+        # Получаем все файлы проекта
         cursor.execute("""
-            SELECT DISTINCT relative_path
+            SELECT file_name, relative_path, is_valid,
+                   CASE WHEN file_path LIKE '[ARCHIVE]%' THEN 1 ELSE 0 END as is_archive
             FROM files
-            WHERE project_id = ? AND relative_path IS NOT NULL AND relative_path != ''
-            ORDER BY relative_path
+            WHERE project_id = ?
+            ORDER BY relative_path, file_name
         """, (project_id,))
 
-        paths = cursor.fetchall()
-        logger.info(f"Найдено {len(paths)} уникальных путей для проекта {project_id}")
+        files = cursor.fetchall()
 
-        if not paths:
+        if not files:
             return []
 
-        # Строим дерево
+        # Строим дерево: { 'dirname': { '__files': [filenames], 'subdir': {...} } }
         tree = {}
-        for (path,) in paths:
-            if not path or path == '.':
-                continue
-            parts = Path(path).parts
+
+        for file_name, relative_path, is_valid, is_archive in files:
+            # Разбиваем путь на части
+            if relative_path and relative_path != '.':
+                parts = Path(relative_path).parts
+            else:
+                parts = []
+
+            # Начинаем с корня дерева
             current = tree
+
+            # Проходим по всем частям пути
             for part in parts:
                 if part not in current:
                     current[part] = {}
                 current = current[part]
 
+            # Добавляем файл в текущую директорию
+            if '__files' not in current:
+                current['__files'] = []
+
+            # Формируем метку файла
+            prefix = "📦 " if is_archive else "📄 "
+            if not is_valid:
+                prefix = "⚠ "
+
+            current['__files'].append({
+                'name': file_name,
+                'full_name': f"{prefix}{file_name}",
+                'is_archive': bool(is_archive),
+                'is_valid': bool(is_valid)
+            })
+
+        # Рекурсивно строим список для UI
         def build_tree(node, current_path=''):
             result = []
+
+            # Сначала добавляем поддиректории
             for name, children in sorted(node.items()):
+                if name == '__files':
+                    continue  # Файлы добавим после папок
+
                 full_path = f"{current_path}/{name}" if current_path else name
+                children_list = build_tree(children, full_path)
+
+                # Считаем количество файлов в этой папке (включая вложенные)
+                def count_files(n):
+                    count = len(n.get('__files', []))
+                    for k, v in n.items():
+                        if k != '__files':
+                            count += count_files(v)
+                    return count
+
+                file_count = count_files(children)
+
                 result.append({
                     'name': name,
                     'path': full_path,
                     'is_dir': True,
-                    'children': build_tree(children, full_path)
+                    'file_count': file_count,
+                    'children': children_list
                 })
+
+            # Затем добавляем файлы
+            for file_info in sorted(node.get('__files', []), key=lambda x: x['name']):
+                result.append({
+                    'name': file_info['full_name'],
+                    'path': f"{current_path}/{file_info['name']}" if current_path else file_info['name'],
+                    'is_dir': False,
+                    'is_archive': file_info['is_archive'],
+                    'is_valid': file_info['is_valid'],
+                    'children': []
+                })
+
             return result
 
-        tree_list = build_tree(tree)
-        logger.info(f"Дерево построено: {len(tree_list)} корневых элементов")
-        return tree_list
+        # Строим дерево, начиная с корня
+        tree_list = build_tree(tree, root_name)
 
-    def close(self):
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        # Оборачиваем в корневую папку
+        root = {
+            'name': f"📂 {root_name}",
+            'path': root_name,
+            'is_dir': True,
+            'file_count': len(files),
+            'children': tree_list
+        }
+
+        logger.info(f"Дерево построено: корень '{root_name}', файлов: {len(files)}")
+        return [root]

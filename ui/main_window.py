@@ -12,6 +12,7 @@ import logging
 import os
 import platform
 import subprocess
+import re
 from PIL import Image
 from typing import Optional, Tuple
 
@@ -139,7 +140,7 @@ class STLManagerApp(ctk.CTk):
         ctk.CTkEntry(self.filter_frame, textvariable=self.min_faces, width=70, font=self.small_font).pack(side="left", padx=2)
         ctk.CTkLabel(self.filter_frame, text="-", font=self.small_font).pack(side="left")
         ctk.CTkEntry(self.filter_frame, textvariable=self.max_faces, width=70, font=self.small_font).pack(side="left", padx=2)
-        ctk.CTkButton(self.filter_frame, text="Применить", command=self.refresh_files,
+        ctk.CTkButton(self.filter_frame, text="Применить", command=lambda: self.refresh_files(),
                       width=80, font=self.small_font).pack(side="left", padx=10)
 
         # Основная область
@@ -237,9 +238,6 @@ class STLManagerApp(ctk.CTk):
 
     def select_folder(self):
         """Диалог выбора папки."""
-        import subprocess
-        import platform
-
         folder = None
 
         if platform.system() == 'Linux':
@@ -252,12 +250,16 @@ class STLManagerApp(ctk.CTk):
                 )
                 if result.returncode == 0:
                     folder = result.stdout.strip()
+                else:
+                    # Пользователь нажал "Отмена" или закрыл окно
+                    return  # <-- Выходим, не открывая Tkinter
             except FileNotFoundError:
                 logger.warning("Zenity не установлен")
             except Exception as e:
                 logger.error(f"Ошибка Zenity: {e}")
 
-        if not folder:
+        # Tkinter только если Zenity недоступен (Windows/macOS)
+        if not folder and platform.system() != 'Linux':
             folder = filedialog.askdirectory(
                 title="Выберите папку с STL файлами и архивами",
                 initialdir=self.current_root_path or os.path.expanduser('~')
@@ -269,7 +271,6 @@ class STLManagerApp(ctk.CTk):
             self.btn_scan.configure(state="normal")
             self.status.configure(text=f"Выбрана папка: {folder}")
             logger.info(f"Выбрана папка: {folder}")
-
     def start_scan(self):
         if not self.current_root_path:
             return
@@ -346,7 +347,25 @@ class STLManagerApp(ctk.CTk):
             self.tree_panel.build_tree(tree)
 
     def _on_tree_select(self, path):
-        self.selected_path = path
+        """Обработчик выбора элемента в дереве."""
+        if not path:
+            return
+
+        clean_path = path
+        for prefix in ["📂 ", "📁 ", "📄 ", "📦 ", "⚠ "]:
+            clean_path = clean_path.replace(prefix, "")
+
+        clean_path = re.sub(r'\s*\(\d+\)\s*$', '', clean_path).strip()
+
+        logger.info(f"Выбран путь: {path} -> чистый: {clean_path}")
+
+        if clean_path.endswith('.stl'):
+            self.selected_path = None
+            self.search_var.set(Path(clean_path).stem)
+        else:
+            self.selected_path = clean_path
+            self.search_var.set("")
+
         self.refresh_files()
 
     def refresh_files(self):
@@ -428,5 +447,5 @@ class STLManagerApp(ctk.CTk):
     def on_closing(self):
         if self.current_worker:
             self.current_worker.cancel()
-        self.db.close()
+        # У Database нет метода close, просто завершаем работу
         self.destroy()

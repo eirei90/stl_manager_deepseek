@@ -107,18 +107,22 @@ class TreePanel(ctk.CTkFrame):
         indent = "  " * depth
 
         if item.get('is_dir'):
-            prefix = "📁 " if depth > 0 else "📂 "
+            file_count = item.get('file_count', 0)
+            name = item.get('name', 'Без имени')
+            text = f"{indent}📁 {name} ({file_count})" if depth > 0 else f"📂 {name} ({file_count})"
+            font = self.tree_font_bold if depth == 0 else self.tree_font
         else:
-            prefix = "📄 "
+            name = item.get('name', 'Без имени')
+            text = f"{indent}{name}"
+            font = self.tree_font
 
-        name = item.get('name', 'Без имени')
-        path = item.get('path', '')
+        path = str(item.get('path', ''))
 
         btn = ctk.CTkButton(
             parent,
-            text=f"{indent}{prefix}{name}",
+            text=text,
             command=lambda p=path: self._on_item_click(p),
-            font=self.tree_font_bold if depth == 0 else self.tree_font,
+            font=font,
             fg_color="transparent",
             hover_color="gray30",
             anchor="w",
