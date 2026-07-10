@@ -1,3 +1,30 @@
+stl_manager/
+├── app.py                 # Точка входа
+├── requirements.txt       # Зависимости
+├── run.sh                 # Скрипт запуска с настройками
+│
+├── models/
+│   ├── __init__.py
+│   └── database.py        # SQLite БД, CRUD
+│
+├── services/
+│   ├── __init__.py
+│   ├── scanner.py         # Сканер STL + поиск в архивах
+│   ├── renderer.py        # Рендеринг (matplotlib основной)
+│   └── archive_utils.py   # Работа с 7z, RAR, ZIP
+│
+├── ui/
+│   ├── __init__.py
+│   ├── main_window.py     # Главное окно с древом и карточками
+│   ├── tree_panel.py      # Панель с деревом каталога (НОВЫЙ)
+│   ├── cards.py           # Карточка STL-файла
+│   └── workers.py         # Фоновые потоки
+│
+└── utils/
+    ├── __init__.py
+    └── logger.py          # Логирование
+
+
 # Перейдите в директорию проекта
 cd /home/eirei/PycharmProjects/stl_manager
 
@@ -80,4 +107,3 @@ python3 -m venv --system-site-packages venv_new
 source venv_new/bin/activate
 pip install customtkinter trimesh vedo py7zr rarfile
 python app.py
-
