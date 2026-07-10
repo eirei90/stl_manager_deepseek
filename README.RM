@@ -1,28 +1,45 @@
 stl_manager/
-├── app.py                 # Точка входа
-├── requirements.txt       # Зависимости
-├── run.sh                 # Скрипт запуска с настройками
+├── app.py                      # Точка входа, запуск приложения
+├── requirements.txt            # Зависимости Python
+├── run.sh                      # Скрипт запуска с настройками окружения
+├── stl_catalog.db              # База данных SQLite (создаётся автоматически)
+├── stl_manager.log             # Лог-файл приложения
 │
 ├── models/
-│   ├── __init__.py
-│   └── database.py        # SQLite БД, CRUD
+│   ├── __init__.py             # Пакет моделей
+│   └── database.py             # Класс Database: SQLite, CRUD, дерево каталога
 │
 ├── services/
-│   ├── __init__.py
-│   ├── scanner.py         # Сканер STL + поиск в архивах
-│   ├── renderer.py        # Рендеринг (matplotlib основной)
-│   └── archive_utils.py   # Работа с 7z, RAR, ZIP
+│   ├── __init__.py             # Пакет сервисов
+│   ├── archive_utils.py        # Класс ArchiveExtractor: работа с 7z, RAR, ZIP
+│   ├── renderer.py             # Класс STLRenderer: рендеринг STL/OBJ в JPEG
+│   └── scanner.py              # Класс STLScanner: обход папок, поиск архивов, метаданные
 │
 ├── ui/
-│   ├── __init__.py
-│   ├── main_window.py     # Главное окно с древом и карточками
-│   ├── tree_panel.py      # Панель с деревом каталога (НОВЫЙ)
-│   ├── cards.py           # Карточка STL-файла
-│   └── workers.py         # Фоновые потоки
+│   ├── __init__.py             # Пакет интерфейса
+│   ├── cards.py                # Класс FileCard: карточка файла с превью и метаданными
+│   ├── main_window.py          # Класс STLManagerApp: главное окно приложения
+│   ├── tree_panel.py           # Класс TreePanel: дерево каталога (ttk.Treeview)
+│   └── workers.py              # Фоновые потоки: ScanWorker, RenderWorker, RefreshThumbsWorker
 │
 └── utils/
-    ├── __init__.py
-    └── logger.py          # Логирование
+    ├── __init__.py             # Пакет утилит
+    └── logger.py               # Настройка логирования
+
+Краткое описание каждого файла
+Файл	Назначение
+app.py	Главный вход: инициализация БД, сканера, рендерера, запуск GUI. Патч для скролла в диалогах.
+requirements.txt	Зависимости: customtkinter, numpy, Pillow, trimesh, matplotlib, py7zr, rarfile
+run.sh	Скрипт запуска с отключением ошибок OpenGL
+models/database.py	Класс Database: создание таблиц, миграции, CRUD для projects, files, thumbnails, построение дерева каталога из файловой системы
+services/archive_utils.py	Класс ArchiveExtractor: определение типа архива, список STL/OBJ внутри, извлечение во временную папку
+services/renderer.py	Класс STLRenderer: рендеринг через matplotlib с переиспользованием фигуры, кэширование мешей, поиск существующих изображений, создание заглушек
+services/scanner.py	Класс STLScanner: один проход os.walk для поиска .stl/.obj и архивов, быстрый парсинг метаданных без trimesh, сохранение в БД
+ui/main_window.py	Класс STLManagerApp: главное окно с тулбаром, прогресс-баром, фильтрами, деревом и карточками. Кнопки "Сканировать", "Превью", "Обновить", "Очистить"
+ui/tree_panel.py	Класс TreePanel: дерево каталога на ttk.Treeview с навигацией (⬆/←), кнопками ⊞/⊟, запоминанием открытых узлов
+ui/cards.py	Класс FileCard: карточка файла с превью, бейджем (STL/OBJ/Архив), метаданными, контекстным меню для удаления
+ui/workers.py	ScanWorker, RenderWorker, RefreshThumbsWorker: фоновые потоки с поддержкой отмены, кэширование архивов, обработка файлов из архивов
+utils/logger.py	Настройка логирования в файл и консоль
 
 
 # Перейдите в директорию проекта

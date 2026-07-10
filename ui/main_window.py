@@ -409,8 +409,6 @@ class STLManagerApp(ctk.CTk):
             clean_path = clean_path.replace(prefix, "")
         clean_path = re.sub(r'\s*\(\d+\)\s*$', '', clean_path).strip()
 
-        logger.info(f"Выбран путь: {path} -> чистый: {clean_path}")
-
         is_file = bool(Path(clean_path).suffix)
 
         if is_file:
@@ -420,6 +418,7 @@ class STLManagerApp(ctk.CTk):
             self.selected_path = clean_path
             self.search_var.set("")
 
+        # Убираем вызов refresh_tree() — дерево не нужно перестраивать при каждом клике
         self.refresh_files()
 
     def refresh_files(self):

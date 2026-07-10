@@ -1,6 +1,6 @@
 """
 Панель с древовидным каталогом файлов.
-Использует ttk.Treeview, запоминает состояние развёрнутых узлов.
+Использует ttk.Treeview. Сохраняет состояние открытых узлов.
 """
 
 import customtkinter as ctk
@@ -116,16 +116,17 @@ class TreePanel(ctk.CTkFrame):
         self.tree.tag_configure("folder", foreground="#4FC3F7")
         self.tree.tag_configure("file", foreground="white")
 
-        # События
+        # События (только выбор)
         self.tree.bind("<<TreeviewSelect>>", self._on_tree_select)
-        self.tree.bind("<Double-1>", self._on_double_click)
-        self.tree.bind("<<TreeviewOpen>>", self._on_tree_open)
-        self.tree.bind("<<TreeviewClose>>", self._on_tree_close)
 
+        # Заглушка
         self._placeholder = self.tree.insert("", "end", text="Выполните сканирование...", tags=("placeholder",))
         self.tree.tag_configure("placeholder", foreground="gray")
 
-    # Навигация (без изменений)
+    # ============================================================
+    # НАВИГАЦИЯ
+    # ============================================================
+
     def _show_all(self):
         self._current_path = None
         self._update_nav_buttons()
@@ -155,21 +156,36 @@ class TreePanel(ctk.CTkFrame):
         self.btn_up.configure(state="normal" if self._current_path else "disabled")
         self.btn_back.configure(state="normal" if self._history else "disabled")
 
-    # Развернуть/свернуть всё (без изменений)
+    # ============================================================
+    # РАЗВЕРНУТЬ / СВЕРНУТЬ ВСЁ
+    # ============================================================
+
     def _expand_all(self):
-        def collect(items):
-            for item in items:
-                if item.get('is_dir'):
-                    self._expanded_nodes.add(item.get('path', ''))
-                    collect(item.get('children', []))
-        collect(self._tree_data)
-        self._rebuild_tree()
+        """Разворачивает все узлы."""
+        for item in self.tree.get_children():
+            self._expand_recursive(item)
+        self._expanded_nodes = set()  # очищаем, т.к. все открыты
+
+    def _expand_recursive(self, item):
+        self.tree.item(item, open=True)
+        for child in self.tree.get_children(item):
+            self._expand_recursive(child)
 
     def _collapse_all(self):
+        """Сворачивает все узлы."""
+        for item in self.tree.get_children():
+            self._collapse_recursive(item)
         self._expanded_nodes.clear()
-        self._rebuild_tree()
 
-    # События дерева
+    def _collapse_recursive(self, item):
+        self.tree.item(item, open=False)
+        for child in self.tree.get_children(item):
+            self._collapse_recursive(child)
+
+    # ============================================================
+    # СОБЫТИЯ ДЕРЕВА
+    # ============================================================
+
     def _on_tree_select(self, event):
         selection = self.tree.selection()
         if not selection:
@@ -187,50 +203,30 @@ class TreePanel(ctk.CTkFrame):
         if self.on_select:
             self.on_select(path)
 
-    def _on_double_click(self, event):
-        selection = self.tree.selection()
-        if selection:
-            item = selection[0]
-            values = self.tree.item(item, "values")
-            if values and len(values) >= 2:
-                path = values[0]
-                if path in self._expanded_nodes:
-                    self._expanded_nodes.discard(path)
-                else:
-                    self._expanded_nodes.add(path)
-                self._rebuild_tree()
+    # ============================================================
+    # ПОСТРОЕНИЕ ДЕРЕВА
+    # ============================================================
 
-    def _on_tree_open(self, event):
-        item = self.tree.selection()[0] if self.tree.selection() else None
-        if not item:
-            return
-        values = self.tree.item(item, "values")
-        if values and len(values) >= 2:
-            self._expanded_nodes.add(values[0])
-
-    def _on_tree_close(self, event):
-        item = self.tree.selection()[0] if self.tree.selection() else None
-        if not item:
-            return
-        values = self.tree.item(item, "values")
-        if values and len(values) >= 2:
-            self._expanded_nodes.discard(values[0])
-
-    # Перестроение
-    def _rebuild_tree(self):
-        for child in self.tree.get_children():
-            self.tree.delete(child)
-        if self._tree_data:
-            for item in self._tree_data:
-                self._add_tree_item("", item)
-
-    # Построение
     def build_tree(self, tree_data):
         self._tree_data = tree_data
         if self._placeholder:
             self.tree.delete(self._placeholder)
             self._placeholder = None
-        self._rebuild_tree()
+
+        # Полная очистка и перестроение
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+
+        if not tree_data:
+            self._placeholder = self.tree.insert("", "end", text="Нет вложенных папок", tags=("placeholder",))
+            return
+
+        # Строим заново
+        for item in tree_data:
+            self._add_tree_item("", item)
+
+        # Восстанавливаем открытые узлы (которые были до перестроения)
+        self._restore_expanded()
 
     def _add_tree_item(self, parent, item):
         is_dir = item.get('is_dir', False)
@@ -251,8 +247,22 @@ class TreePanel(ctk.CTkFrame):
             else:
                 tags = ("file",)
 
-        open_ = (path in self._expanded_nodes) or (is_dir and len(children) > 0 and not path)  # корень всегда открыт
-        node = self.tree.insert(parent, "end", text=text, values=(path, is_dir), open=open_, tags=tags)
+        # При первоначальном построении не открываем ничего (откроется позже)
+        node = self.tree.insert(parent, "end", text=text, values=(path, is_dir), open=False, tags=tags)
 
         for child in children:
             self._add_tree_item(node, child)
+
+    def _restore_expanded(self):
+        """Восстанавливает открытые узлы из _expanded_nodes."""
+        for item in self.tree.get_children():
+            self._restore_expanded_recursive(item)
+
+    def _restore_expanded_recursive(self, item):
+        values = self.tree.item(item, "values")
+        if values and len(values) >= 2:
+            path = values[0]
+            if path in self._expanded_nodes:
+                self.tree.item(item, open=True)
+        for child in self.tree.get_children(item):
+            self._restore_expanded_recursive(child)
