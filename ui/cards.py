@@ -34,6 +34,9 @@ class FileCard(ctk.CTkFrame):
 
         self.file_id = file_data[0]
         self.file_name = file_data[1] or "Без имени"
+        # Определяем тип файла
+        file_ext = os.path.splitext(self.file_name)[1].lower() if self.file_name else ''
+        self.is_obj = (file_ext == '.obj')
         self.file_path = file_data[2] or ""
         self.file_size = file_data[3] or 0
         self.face_count = file_data[5] if len(file_data) > 5 else 0
@@ -76,8 +79,8 @@ class FileCard(ctk.CTkFrame):
 
         if self.is_from_archive:
             color, text = "#FF9800", "📦 Архив"
-        elif self.thumb_source == 'existing':
-            color, text = "#2196F3", "🖼 Готовое"
+        elif self.is_obj:
+            color, text = "#9C27B0", "🔷 OBJ"
         else:
             color, text = "#4CAF50", "🔷 STL"
 

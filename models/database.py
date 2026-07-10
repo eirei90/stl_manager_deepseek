@@ -156,7 +156,8 @@ class Database:
                                name_filter: str = None,
                                min_faces: int = None,
                                max_faces: int = None,
-                               relative_path: str = None) -> List[Tuple]:
+                               relative_path: str = None,
+                               exclude_archive_files: bool = True) -> List[Tuple]:
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -171,6 +172,10 @@ class Database:
         """
         params = [project_id]
 
+        # Исключаем файлы внутри архивов (оставляем только сами архивы)
+        if exclude_archive_files:
+            query += " AND (f.file_path NOT LIKE '[ARCHIVE]%' OR f.format_type = 'archive')"
+
         if name_filter:
             query += " AND f.file_name LIKE ?"
             params.append(f"%{name_filter}%")
@@ -181,8 +186,9 @@ class Database:
             query += " AND f.face_count <= ?"
             params.append(max_faces)
         if relative_path:
-            query += " AND f.relative_path LIKE ?"
-            params.append(f"{relative_path}%")
+            query += " AND (f.relative_path = ? OR f.relative_path LIKE ?)"
+            params.append(relative_path)
+            params.append(f"{relative_path}/%")
 
         query += " ORDER BY f.relative_path, f.file_name"
 

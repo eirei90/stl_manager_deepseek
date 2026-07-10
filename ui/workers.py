@@ -265,7 +265,7 @@ class RenderWorker(BackgroundTask):
                                         found_image_in_archive = candidate
                                         logger.info(f"  Найдено изображение: {f}")
 
-                                if not extracted and f_lower.endswith('.stl'):
+                                if not extracted and f_lower.endswith(('.stl', '.obj')):
                                     if os.path.getsize(candidate) > 500:
                                         extracted = candidate
                                         logger.info(f"  Найден STL: {f}")
