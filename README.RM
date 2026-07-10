@@ -1,0 +1,83 @@
+# Перейдите в директорию проекта
+cd /home/eirei/PycharmProjects/stl_manager
+
+# Установите все зависимости из requirements.txt
+pip install -r requirements.txt
+
+# Создайте виртуальное окружение
+python3 -m venv venv
+
+# Активируйте его
+source venv/bin/activate
+
+# Установите зависимости
+pip install -r requirements.txt
+
+# Запустите приложение
+python app.py
+
+----------------------------
+
+# Установка системных зависимостей
+sudo pacman -S --noconfirm python-numpy python-pillow python-scipy python-matplotlib tk
+
+# Установка остальных через pip
+pip install customtkinter trimesh vedo vtk py7zr rarfile patool
+
+# Установка EGL для headless-рендеринга
+sudo pacman -S --noconfirm libglvnd mesa-utils
+
+# Установка переменных окружения перед запуском
+export MESA_GL_VERSION_OVERRIDE=3.3
+export EGL_PLATFORM=surfaceless
+export PYVISTA_OFF_SCREEN=true
+
+# Запуск приложения
+python3 app.py
+
+-----------------------------
+# Деактивируйте виртуальное окружение
+deactivate
+
+# Установите системный Tkinter
+sudo pacman -S --noconfirm tk
+
+
+# При проблемах шрифтов
+# Активируйте виртуальное окружение снова
+source venv/bin/activate
+
+# Удалите tkinter из виртуального окружения (если он там есть)
+pip uninstall tk
+pip uninstall tkinter
+
+# Создайте символическую ссылку на системный Tkinter
+python3 -c "
+import sys
+import os
+
+# Находим системный Tkinter
+system_tk = '/usr/lib/python3.12/lib-dynload/_tkinter.cpython-312-x86_64-linux-gnu.so'
+if os.path.exists(system_tk):
+    venv_tk_dir = os.path.join(sys.prefix, 'lib', 'python3.12', 'lib-dynload')
+    os.makedirs(venv_tk_dir, exist_ok=True)
+    target = os.path.join(venv_tk_dir, '_tkinter.cpython-312-x86_64-linux-gnu.so')
+    if not os.path.exists(target):
+        os.symlink(system_tk, target)
+        print(f'Создана ссылка: {target} -> {system_tk}')
+    else:
+        print('Ссылка уже существует')
+"
+
+Если шрифты всё не видны, попробуйте запустить приложение без виртуального окружения:
+
+deactivate
+python3 app.py
+
+Или создайте новое виртуальное окружение с системными пакетами:
+
+python3 -m venv --system-site-packages venv_new
+source venv_new/bin/activate
+pip install customtkinter trimesh vedo py7zr rarfile
+python app.py
+

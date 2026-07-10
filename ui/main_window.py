@@ -556,6 +556,15 @@ class STLManagerApp(ctk.CTk):
                 card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
             except Exception as e:
                 logger.error(f"Ошибка создания карточки: {e}")
+                # Создаём карточку с ошибкой (ТОЛЬКО виджеты, никаких строк!)
+                error_card = ctk.CTkFrame(self.cards_frame, corner_radius=10, fg_color="#4A0000")
+                ctk.CTkLabel(
+                    error_card,
+                    text="Ошибка\nзагрузки",
+                    font=self.small_font,
+                    text_color="white"
+                ).pack(padx=20, pady=20)
+                error_card.grid(row=row, column=col, padx=10, pady=10, sticky="nsew")
 
             col += 1
             if col >= max_cols:
