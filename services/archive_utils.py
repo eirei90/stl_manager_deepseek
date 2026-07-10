@@ -1,4 +1,3 @@
-cat > /home/eirei/PycharmProjects/stl_manager/services/archive_utils.py << 'ENDSCRIPT'
 """Работа с архивами."""
 
 import os
@@ -86,4 +85,3 @@ class ArchiveExtractor:
                 shutil.rmtree(self.temp_dir)
         except:
             pass
-ENDSCRIPT

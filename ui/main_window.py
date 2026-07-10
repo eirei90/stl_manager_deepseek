@@ -144,42 +144,75 @@ class STLManagerApp(ctk.CTk):
 
         # Дерево слева
         from ui.tree_panel import TreePanel
-        self.tree_panel = TreePanel(self.main_frame, on_select=self._on_tree_select,
-                                    font_family=FONT_FAMILY, font_size=FONT_SIZE,
-                                    width=280)
+        self.tree_panel = TreePanel(
+            self.main_frame,
+            on_select=self._on_tree_select,
+            font_family=FONT_FAMILY,
+            font_size=FONT_SIZE,
+            width=250  # фиксированная ширина
+        )
 
         # Карточки справа
         self.cards_frame = ctk.CTkScrollableFrame(self.main_frame, label_text="Файлы",
                                                    label_font=self.title_font)
 
         # Статус
-        self.status = ctk.CTkLabel(self, text="Готов", anchor="w", font=self.small_font, height=25)
+        self.status = ctk.CTkLabel(
+            self,
+            text="Готов",
+            anchor="w",
+            font=self.small_font,
+            height=25  # фиксированная высота
+        )
 
     def _create_layout(self):
+        """Размещает виджеты с правильными пропорциями."""
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(4, weight=1)
 
+        # Строки:
+        # 0 - тулбар (фиксированная высота)
+        # 1 - прогресс (фиксированная)
+        # 2 - фильтры (фиксированная)
+        # 3 - основной контент (растягивается)
+        # 4 - статус (фиксированная)
+
+        self.grid_rowconfigure(0, weight=0)  # тулбар - не растягивается
+        self.grid_rowconfigure(1, weight=0)  # прогресс
+        self.grid_rowconfigure(2, weight=0)  # фильтры
+        self.grid_rowconfigure(3, weight=1)  # основной контент - растягивается
+        self.grid_rowconfigure(4, weight=0)  # статус - НЕ растягивается
+
+        # Тулбар
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         self.toolbar.grid_columnconfigure(4, weight=1)
+
         self.btn_folder.grid(row=0, column=0, padx=3)
         self.btn_scan.grid(row=0, column=1, padx=3)
         self.btn_render.grid(row=0, column=2, padx=3)
         self.btn_stop.grid(row=0, column=3, padx=3)
         self.lbl_folder.grid(row=0, column=4, padx=10, sticky="w")
 
-        self.progress.grid(row=1, column=0, sticky="ew", padx=10, pady=(5,0))
-        self.lbl_progress.grid(row=1, column=0, sticky="e", padx=15, pady=(5,0))
+        # Прогресс-бар
+        self.progress.grid(row=1, column=0, sticky="ew", padx=10, pady=(5, 0))
+        self.lbl_progress.grid(row=1, column=0, sticky="e", padx=15, pady=(5, 0))
 
+        # Фильтры
         self.filter_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
 
+        # Основной контент
         self.main_frame.grid(row=3, column=0, sticky="nsew", padx=5, pady=2)
-        self.main_frame.grid_columnconfigure(1, weight=1)
-        self.main_frame.grid_rowconfigure(0, weight=1)
+        self.main_frame.grid_columnconfigure(1, weight=1)  # карточки растягиваются
+        self.main_frame.grid_rowconfigure(0, weight=1)     # и дерево и карточки растягиваются
 
-        self.tree_panel.grid(row=0, column=0, sticky="ns", padx=(0,5))
+        # Дерево слева
+        self.tree_panel.grid(row=0, column=0, sticky="ns", padx=(0, 5))
+
+        # Карточки справа
         self.cards_frame.grid(row=0, column=1, sticky="nsew")
 
+        # Статус-бар (фиксированная высота 25px)
         self.status.grid(row=4, column=0, sticky="ew", padx=5, pady=2)
+        self.status.configure(height=25)  # фиксируем высоту
 
     def select_folder(self):
         folder = filedialog.askdirectory(title="Выберите папку с STL")
