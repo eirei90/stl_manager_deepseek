@@ -1,6 +1,5 @@
-"""
-Утилиты для работы с архивами 7z, RAR, ZIP.
-"""
+cat > /home/eirei/PycharmProjects/stl_manager/services/archive_utils.py << 'ENDSCRIPT'
+"""Работа с архивами."""
 
 import os
 import tempfile
@@ -26,13 +25,12 @@ except ImportError:
 
 
 class ArchiveExtractor:
-    """Извлечение STL из архивов."""
 
     TARGET = {'.stl'}
     ARCHIVES = {'.7z', '.rar', '.zip'}
 
     def __init__(self):
-        self.temp_dir = tempfile.mkdtemp(prefix="stl_archive_")
+        self.temp_dir = tempfile.mkdtemp(prefix="stl_")
         os.makedirs(self.temp_dir, exist_ok=True)
 
     def is_archive(self, path: str) -> bool:
@@ -40,20 +38,20 @@ class ArchiveExtractor:
 
     def list_stl_files(self, archive_path: str) -> List[str]:
         ext = Path(archive_path).suffix.lower()
+        result = []
         try:
             if ext == '.zip':
                 with zipfile.ZipFile(archive_path) as zf:
-                    return [n for n in zf.namelist() if Path(n).suffix.lower() in self.TARGET]
+                    result = [n for n in zf.namelist() if Path(n).suffix.lower() in self.TARGET]
             elif ext == '.7z' and PY7ZR_AVAILABLE:
                 with py7zr.SevenZipFile(archive_path, 'r') as szf:
-                    return [n for n in szf.getnames() if Path(n).suffix.lower() in self.TARGET]
+                    result = [n for n in szf.getnames() if Path(n).suffix.lower() in self.TARGET]
             elif ext == '.rar' and RARFILE_AVAILABLE:
                 with rarfile.RarFile(archive_path) as rf:
-                    return [i.filename for i in rf.infolist()
-                           if not i.isdir() and Path(i.filename).suffix.lower() in self.TARGET]
+                    result = [i.filename for i in rf.infolist() if not i.isdir() and Path(i.filename).suffix.lower() in self.TARGET]
         except Exception as e:
-            logger.error(f"Ошибка чтения архива: {e}")
-        return []
+            logger.error(f"Error: {e}")
+        return result
 
     def extract_stl_files(self, archive_path: str) -> Generator[str, None, None]:
         ext = Path(archive_path).suffix.lower()
@@ -79,16 +77,8 @@ class ArchiveExtractor:
                             p = os.path.join(extract_dir, n)
                             if os.path.exists(p):
                                 yield p
-            elif ext == '.rar' and RARFILE_AVAILABLE:
-                with rarfile.RarFile(archive_path) as rf:
-                    for info in rf.infolist():
-                        if not info.isdir() and Path(info.filename).suffix.lower() in self.TARGET:
-                            rf.extract(info, extract_dir)
-                            p = os.path.join(extract_dir, info.filename)
-                            if os.path.exists(p):
-                                yield p
         except Exception as e:
-            logger.error(f"Ошибка извлечения: {e}")
+            logger.error(f"Extract error: {e}")
 
     def cleanup(self):
         try:
@@ -96,6 +86,4 @@ class ArchiveExtractor:
                 shutil.rmtree(self.temp_dir)
         except:
             pass
-
-    def __del__(self):
-        self.cleanup()
+ENDSCRIPT
