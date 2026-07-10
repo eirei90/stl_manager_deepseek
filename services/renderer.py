@@ -36,29 +36,30 @@ class STLRenderer:
     def find_existing_image(self, stl_path: str) -> Optional[str]:
         """
         Ищет существующее изображение с тем же именем, что и STL-файл.
-
-        Returns:
-            Путь к найденному изображению или None
+        Проверяет рядом с файлом и в папке .thumbs
         """
         stl_file = Path(stl_path)
         stl_dir = stl_file.parent
         stl_stem = stl_file.stem
 
-        # Ищем файлы с тем же именем, но другим расширением
+        # Ищем в той же папке
         for ext in self.EXISTING_EXTENSIONS:
-            # Проверяем в той же папке
             candidate = stl_dir / f"{stl_stem}{ext}"
             if candidate.exists():
                 logger.info(f"Найдено существующее изображение: {candidate.name}")
                 return str(candidate)
 
-            # Проверяем в .thumbs
-            candidate = stl_dir / ".thumbs" / f"{stl_stem}{ext}"
-            if candidate.exists():
-                logger.info(f"Найдено изображение в .thumbs: {candidate.name}")
-                return str(candidate)
+        # Ищем в .thumbs
+        thumbs_dir = stl_dir / ".thumbs"
+        if thumbs_dir.exists():
+            for ext in self.EXISTING_EXTENSIONS:
+                candidate = thumbs_dir / f"{stl_stem}{ext}"
+                if candidate.exists():
+                    logger.info(f"Найдено изображение в .thumbs: {candidate.name}")
+                    return str(candidate)
 
         return None
+
 
     def copy_existing_image(self, source_path: str, output_path: str) -> bool:
         """
