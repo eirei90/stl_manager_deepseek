@@ -149,110 +149,170 @@ class RenderWorker(BackgroundTask):
     def _extract_from_archive(self, archive_path: str, file_name: str) -> Optional[str]:
         """
         Извлекает конкретный файл из архива во временную директорию.
-
-        Args:
-            archive_path: Путь к архиву
-            file_name: Имя файла внутри архива
-
-        Returns:
-            Путь к извлечённому файлу или None
         """
         import zipfile
 
         try:
-            # Создаём поддиректорию для этого архива
             archive_name = Path(archive_path).stem
             extract_dir = os.path.join(self._temp_dir, archive_name)
             os.makedirs(extract_dir, exist_ok=True)
 
-            # Извлекаем файл
+            logger.debug(f"  Извлечение из {archive_path}")
+            logger.debug(f"  Искомый файл: {file_name}")
+
             if archive_path.endswith('.zip'):
                 with zipfile.ZipFile(archive_path, 'r') as zf:
-                    # Ищем файл в архиве
-                    for name in zf.namelist():
-                        if file_name in name or name.endswith(file_name):
+                    # Показываем содержимое архива для отладки
+                    all_names = zf.namelist()
+                    logger.debug(f"  Содержимое архива ({len(all_names)} файлов):")
+                    for n in all_names[:5]:
+                        logger.debug(f"    - {n}")
+
+                    # Ищем файл
+                    for name in all_names:
+                        # Проверяем разные варианты совпадения
+                        if (file_name in name or
+                                name.endswith(file_name) or
+                                Path(name).name == file_name):
+
                             zf.extract(name, extract_dir)
                             extracted_path = os.path.join(extract_dir, name)
+
+                            # Создаём директории если нужно
+                            os.makedirs(os.path.dirname(extracted_path), exist_ok=True)
+
                             if os.path.exists(extracted_path):
-                                logger.info(f"  Извлечён из архива: {name}")
+                                logger.info(f"  ✅ Извлечён: {name}")
                                 return extracted_path
 
-            elif archive_path.endswith('.7z') and ARCHIVE_SUPPORT:
-                import py7zr
-                with py7zr.SevenZipFile(archive_path, 'r') as szf:
-                    for name in szf.getnames():
-                        if file_name in name or name.endswith(file_name):
-                            szf.extract(extract_dir, targets=[name])
-                            extracted_path = os.path.join(extract_dir, name)
-                            if os.path.exists(extracted_path):
-                                return extracted_path
+            elif archive_path.endswith('.7z'):
+                try:
+                    import py7zr
+                    with py7zr.SevenZipFile(archive_path, 'r') as szf:
+                        for name in szf.getnames():
+                            if (file_name in name or
+                                    name.endswith(file_name) or
+                                    Path(name).name == file_name):
 
-            elif archive_path.endswith('.rar') and ARCHIVE_SUPPORT:
-                import rarfile
-                with rarfile.RarFile(archive_path) as rf:
-                    for info in rf.infolist():
-                        if file_name in info.filename or info.filename.endswith(file_name):
-                            rf.extract(info, extract_dir)
-                            extracted_path = os.path.join(extract_dir, info.filename)
-                            if os.path.exists(extracted_path):
-                                return extracted_path
+                                szf.extract(extract_dir, targets=[name])
+                                extracted_path = os.path.join(extract_dir, name)
+                                if os.path.exists(extracted_path):
+                                    return extracted_path
+                except ImportError:
+                    logger.error("py7zr не установлен")
 
-            logger.warning(f"  Файл {file_name} не найден в архиве {archive_path}")
+            elif archive_path.endswith('.rar'):
+                try:
+                    import rarfile
+                    with rarfile.RarFile(archive_path) as rf:
+                        for info in rf.infolist():
+                            if (file_name in info.filename or
+                                    info.filename.endswith(file_name) or
+                                    Path(info.filename).name == file_name):
+
+                                rf.extract(info, extract_dir)
+                                extracted_path = os.path.join(extract_dir, info.filename)
+                                if os.path.exists(extracted_path):
+                                    return extracted_path
+                except ImportError:
+                    logger.error("rarfile не установлен")
+
+            logger.warning(f"  Файл '{file_name}' не найден в архиве")
             return None
 
         except Exception as e:
-            logger.error(f"  Ошибка извлечения из архива: {e}")
+            logger.error(f"  Ошибка извлечения: {e}")
             return None
 
     def _find_archive_for_file(self, file_name: str) -> Optional[str]:
         """
         Ищет архив, содержащий указанный файл.
-        Ищет в директориях проекта.
+        Ищет в директориях проекта и родительских директориях.
         """
-        # Получаем все файлы проекта для поиска архивов
+        # Получаем все файлы проекта для поиска директорий
         files = self.db.get_files_for_project(self.project_id)
 
-        # Собираем все уникальные директории
-        dirs = set()
+        # Собираем все уникальные директории + родительские
+        dirs_to_search = set()
+
         for record in files:
             path = record[2]
             if not path.startswith("[ARCHIVE]"):
                 parent = str(Path(path).parent)
-                dirs.add(parent)
+                dirs_to_search.add(parent)
+                # Добавляем также родительскую директорию
+                grandparent = str(Path(parent).parent)
+                dirs_to_search.add(grandparent)
 
-        # Ищем архивы в этих директориях
-        for dir_path in dirs:
+        # Также получаем корневую папку проекта
+        conn = self.db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT root_path FROM projects WHERE id = ?", (self.project_id,))
+        result = cursor.fetchone()
+        if result:
+            dirs_to_search.add(result[0])
+
+        logger.debug(f"Поиск архива для '{file_name}' в {len(dirs_to_search)} директориях")
+
+        # Ищем архивы во всех найденных директориях
+        for dir_path in dirs_to_search:
             if not os.path.exists(dir_path):
                 continue
 
-            for item in os.listdir(dir_path):
-                item_path = os.path.join(dir_path, item)
-                if os.path.isfile(item_path):
+            try:
+                for item in os.listdir(dir_path):
+                    item_path = os.path.join(dir_path, item)
+                    if not os.path.isfile(item_path):
+                        continue
+
                     ext = Path(item).suffix.lower()
-                    if ext in ('.zip', '.7z', '.rar'):
-                        # Проверяем, содержит ли архив нужный файл
-                        try:
-                            if ext == '.zip':
-                                import zipfile
-                                with zipfile.ZipFile(item_path, 'r') as zf:
-                                    for name in zf.namelist():
-                                        if file_name in name:
-                                            logger.info(f"  Найден архив: {item_path}")
-                                            return item_path
-                            elif ext == '.7z' and ARCHIVE_SUPPORT:
+                    if ext not in ('.zip', '.7z', '.rar'):
+                        continue
+
+                    # Проверяем, содержит ли архив нужный файл
+                    try:
+                        if ext == '.zip':
+                            import zipfile
+                            with zipfile.ZipFile(item_path, 'r') as zf:
+                                for name in zf.namelist():
+                                    # Проверяем: полное совпадение имени файла
+                                    # или файл находится внутри архива
+                                    if file_name in name or name.endswith(file_name):
+                                        logger.info(f"  Найден архив: {item_path}")
+                                        logger.info(f"    Содержит: {name}")
+                                        return item_path
+
+                        elif ext == '.7z':
+                            try:
                                 import py7zr
                                 with py7zr.SevenZipFile(item_path, 'r') as szf:
-                                    if file_name in szf.getnames():
-                                        return item_path
-                            elif ext == '.rar' and ARCHIVE_SUPPORT:
+                                    for name in szf.getnames():
+                                        if file_name in name or name.endswith(file_name):
+                                            logger.info(f"  Найден архив: {item_path}")
+                                            return item_path
+                            except ImportError:
+                                pass
+
+                        elif ext == '.rar':
+                            try:
                                 import rarfile
                                 with rarfile.RarFile(item_path) as rf:
                                     for info in rf.infolist():
-                                        if file_name in info.filename:
+                                        if file_name in info.filename or info.filename.endswith(file_name):
+                                            logger.info(f"  Найден архив: {item_path}")
                                             return item_path
-                        except Exception:
-                            continue
+                            except ImportError:
+                                pass
 
+                    except Exception as e:
+                        logger.debug(f"  Ошибка чтения архива {item_path}: {e}")
+                        continue
+
+            except PermissionError:
+                continue
+
+        logger.warning(f"  Архив не найден для '{file_name}'")
+        logger.debug(f"  Проверены директории: {list(dirs_to_search)[:5]}")
         return None
 
     def _batch_render(self, progress_cb, cancel_token) -> int:
