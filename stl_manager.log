@@ -145,3 +145,303 @@
 2026-07-08 13:19:11 [INFO] STLManager: Рендерер готов (метод: vedo)
 2026-07-08 13:19:11 [INFO] STLManager: Запуск графического интерфейса...
 2026-07-08 13:19:11 [INFO] STLManager: Главное окно открыто
+2026-07-10 12:35:59,106 [INFO] STLManager: ==================================================
+2026-07-10 12:35:59,106 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:35:59,107 [CRITICAL] STLManager: Ошибка: no such column: relative_path
+Traceback (most recent call last):
+  File "/home/eirei/PycharmProjects/stl_manager/app.py", line 27, in main
+    db = Database("stl_catalog.db")
+  File "/home/eirei/PycharmProjects/stl_manager/models/database.py", line 20, in __init__
+    self._create_tables()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "/home/eirei/PycharmProjects/stl_manager/models/database.py", line 33, in _create_tables
+    cursor.executescript("""
+    ~~~~~~~~~~~~~~~~~~~~^^^^
+        CREATE TABLE IF NOT EXISTS projects (
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<38 lines>...
+        CREATE INDEX IF NOT EXISTS idx_files_relative ON files(relative_path);
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """)
+    ^^^^
+sqlite3.OperationalError: no such column: relative_path
+2026-07-10 12:36:17,923 [INFO] STLManager: ==================================================
+2026-07-10 12:36:17,923 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:36:17,984 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:36:18,228 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:36:18,229 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:36:18,509 [INFO] ui.main_window: Окно создано
+2026-07-10 12:36:34,422 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:36:34,423 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:36:34,610 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:34,610 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:34,610 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:34,610 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:34,617 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:36:34,620 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:36:34,620 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:36:34,620 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:36:34,620 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:36:48,853 [INFO] ui.workers: Рендеринг 0 файлов
+2026-07-10 12:36:48,853 [INFO] ui.workers: Готово: 0 (из существующих: 0), пропущено: 0, ошибок: 0
+2026-07-10 12:36:49,836 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:36:49,837 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:36:50,027 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:50,027 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:50,028 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:50,028 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:50,036 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:36:50,038 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:36:50,038 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:36:50,038 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:36:50,038 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:36:55,201 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:36:55,203 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:36:55,390 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:55,390 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:55,390 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:55,391 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:55,399 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:36:55,402 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:36:55,402 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:36:55,402 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:36:55,402 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:36:55,999 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:36:56,001 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:36:56,188 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:56,188 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:56,189 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:56,189 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:56,197 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:36:56,200 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:36:56,200 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:36:56,200 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:36:56,200 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:36:56,642 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:36:56,643 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:36:56,827 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:56,827 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:36:56,827 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:56,827 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:36:56,834 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:36:56,837 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:36:56,837 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:36:56,838 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:36:56,838 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:37:24,133 [INFO] STLManager: Остановлено
+2026-07-10 12:38:24,454 [INFO] STLManager: ==================================================
+2026-07-10 12:38:24,454 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:38:24,455 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:38:24,706 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:38:24,706 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:38:24,993 [INFO] ui.main_window: Окно создано
+2026-07-10 12:38:44,772 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:38:44,774 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:38:44,966 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:44,967 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:44,967 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:44,967 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:44,976 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:38:44,979 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:38:44,979 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:38:44,979 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:38:44,979 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:38:53,516 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:38:53,517 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:38:53,700 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:53,700 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:53,701 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:53,701 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:53,708 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:38:53,711 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:38:53,711 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:38:53,711 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:38:53,711 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:38:54,223 [INFO] ui.workers: Рендеринг 0 файлов
+2026-07-10 12:38:54,224 [INFO] ui.workers: Готово: 0 (из существующих: 0), пропущено: 0, ошибок: 0
+2026-07-10 12:38:54,822 [INFO] ui.workers: Рендеринг 0 файлов
+2026-07-10 12:38:54,822 [INFO] ui.workers: Готово: 0 (из существующих: 0), пропущено: 0, ошибок: 0
+2026-07-10 12:38:56,278 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:38:56,280 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:38:56,463 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:56,463 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:56,463 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:56,463 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:56,471 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:38:56,474 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:38:56,474 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:38:56,474 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:38:56,475 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:38:57,279 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:38:57,281 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:38:57,463 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:57,463 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:57,464 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:57,464 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:57,472 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:38:57,475 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:38:57,475 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:38:57,475 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:38:57,475 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:38:58,845 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:38:58,846 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:38:59,031 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:59,031 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:38:59,031 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:59,031 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:38:59,040 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:38:59,042 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:38:59,043 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:38:59,043 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:38:59,043 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:40:59,703 [INFO] STLManager: ==================================================
+2026-07-10 12:40:59,703 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:40:59,704 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:40:59,951 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:40:59,951 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:41:00,193 [INFO] ui.main_window: Окно создано
+2026-07-10 12:41:22,510 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:41:22,513 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:41:22,699 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:41:22,699 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:41:22,700 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:41:22,700 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:41:22,709 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:41:22,712 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:41:22,713 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:41:22,713 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:41:22,713 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:44:46,635 [INFO] STLManager: ==================================================
+2026-07-10 12:44:46,636 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:44:46,636 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:44:46,886 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:44:46,886 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:44:47,139 [INFO] ui.main_window: Окно создано
+2026-07-10 12:45:09,052 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:45:09,056 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:45:09,241 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:45:09,242 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:45:09,242 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:45:09,242 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:45:09,251 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:45:09,254 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:45:09,254 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:45:09,254 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:45:09,254 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:49:12,167 [INFO] STLManager: ==================================================
+2026-07-10 12:49:12,167 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:49:12,168 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:49:12,414 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:49:12,415 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:49:12,700 [INFO] ui.main_window: Окно создано
+2026-07-10 12:49:27,310 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:49:27,314 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:49:27,502 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:49:27,503 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:49:27,503 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:49:27,503 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:49:27,512 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:49:27,515 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:49:27,515 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:49:27,515 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:49:27,516 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:50:06,250 [INFO] STLManager: ==================================================
+2026-07-10 12:50:06,250 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:50:06,251 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:50:06,503 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:50:06,503 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:50:06,787 [INFO] ui.main_window: Окно создано
+2026-07-10 12:50:28,995 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:50:28,998 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:50:29,184 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:50:29,184 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:50:29,184 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:50:29,184 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:50:29,193 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:50:29,196 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:50:29,196 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:50:29,196 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:50:29,196 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:51:17,933 [INFO] STLManager: ==================================================
+2026-07-10 12:51:17,933 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:51:17,934 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:51:18,184 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:51:18,184 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:51:18,454 [INFO] ui.main_window: Окно создано
+2026-07-10 12:51:33,295 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:51:33,298 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:51:33,486 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:51:33,486 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:51:33,486 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:51:33,487 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:51:33,495 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:51:33,498 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:51:33,498 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:51:33,498 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:51:33,498 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 12:57:29,664 [INFO] STLManager: ==================================================
+2026-07-10 12:57:29,664 [INFO] STLManager: STL Manager - запуск
+2026-07-10 12:57:29,665 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 12:57:29,911 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 12:57:29,912 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 12:57:30,241 [INFO] ui.main_window: Окно создано
+2026-07-10 12:57:40,540 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 12:57:40,542 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 12:57:40,729 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:57:40,729 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 12:57:40,729 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:57:40,730 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 12:57:40,738 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 12:57:40,741 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 12:57:40,741 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 12:57:40,741 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 12:57:40,741 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 13:01:38,895 [INFO] STLManager: ==================================================
+2026-07-10 13:01:38,895 [INFO] STLManager: STL Manager - запуск
+2026-07-10 13:01:38,895 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 13:01:39,140 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 13:01:39,140 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 13:01:39,415 [INFO] ui.main_window: Окно создано
+2026-07-10 13:01:52,951 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 13:01:52,953 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 13:01:53,137 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 13:01:53,138 [ERROR] services.scanner: Ошибка: 'NoneType' object does not support item assignment
+2026-07-10 13:01:53,138 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 13:01:53,138 [ERROR] services.scanner: Ошибка: 'NoneType' object is not subscriptable
+2026-07-10 13:01:53,147 [INFO] services.scanner: Сканирование завершено: 0/4
+2026-07-10 13:01:53,150 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 13:01:53,150 [INFO] models.database: Найдено 0 уникальных путей для проекта 1
+2026-07-10 13:01:53,150 [INFO] ui.main_window: Получено дерево: 0 элементов
+2026-07-10 13:01:53,150 [INFO] ui.tree_panel: Построение дерева: 0 элементов
+2026-07-10 13:01:59,919 [INFO] STLManager: Остановлено
+2026-07-10 13:04:16,493 [INFO] STLManager: ==================================================
+2026-07-10 13:04:16,493 [INFO] STLManager: STL Manager - запуск
+2026-07-10 13:04:16,494 [INFO] models.database: БД инициализирована: /home/eirei/PycharmProjects/stl_manager/stl_catalog.db
+2026-07-10 13:04:16,737 [INFO] services.renderer: Рендерер готов: matplotlib + trimesh
+2026-07-10 13:04:16,737 [INFO] services.renderer: Также будет проверяться наличие существующих изображений
+2026-07-10 13:04:17,092 [INFO] ui.main_window: Окно создано
+2026-07-10 13:04:28,622 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 13:04:28,623 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 13:04:33,107 [INFO] services.scanner: Готово: 4/4
+2026-07-10 13:04:33,110 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 13:04:33,110 [INFO] models.database: Найдено 1 уникальных путей для проекта 1
+2026-07-10 13:04:33,110 [INFO] models.database: Дерево построено: 1 корневых элементов
+2026-07-10 13:04:33,110 [INFO] ui.main_window: Получено дерево: 1 элементов
+2026-07-10 13:04:33,110 [INFO] ui.tree_panel: Построение дерева: 1 элементов
+2026-07-10 13:04:37,548 [INFO] ui.tree_panel: Выбран путь: Flexy_Corgi
+2026-07-10 13:04:44,240 [INFO] services.scanner: Сканирование: /home/eirei/3D/Korgi
+2026-07-10 13:04:44,242 [INFO] services.scanner: Найден архив: Flexy_Corgi.zip
+2026-07-10 13:04:48,690 [INFO] services.scanner: Готово: 4/4
+2026-07-10 13:04:48,692 [INFO] ui.main_window: refresh_tree вызван, project_id=1
+2026-07-10 13:04:48,692 [INFO] models.database: Найдено 1 уникальных путей для проекта 1
+2026-07-10 13:04:48,692 [INFO] models.database: Дерево построено: 1 корневых элементов
+2026-07-10 13:04:48,692 [INFO] ui.main_window: Получено дерево: 1 элементов
+2026-07-10 13:04:48,692 [INFO] ui.tree_panel: Построение дерева: 1 элементов
+2026-07-10 13:04:52,135 [INFO] ui.workers: Рендеринг 4 файлов
+2026-07-10 13:04:52,136 [INFO] services.renderer: Найдено существующее изображение: Flexy_Corgi_Body.jpeg
+2026-07-10 13:04:52,136 [INFO] ui.workers: [3/4] Использую существующее: Flexy_Corgi_Body.jpeg
+2026-07-10 13:04:52,152 [INFO] services.renderer: Изображение сохранено: Flexy_Corgi_Body.jpg
+2026-07-10 13:04:52,154 [INFO] services.renderer: Найдено изображение в .thumbs: Flexy_Corgi_Head.jpg
+2026-07-10 13:04:52,154 [INFO] ui.workers: [4/4] Использую существующее: Flexy_Corgi_Head.jpg
+2026-07-10 13:04:52,162 [INFO] services.renderer: Изображение сохранено: Flexy_Corgi_Head.jpg
+2026-07-10 13:04:52,164 [INFO] ui.workers: Готово: 2 (из существующих: 2), пропущено: 2, ошибок: 0
