@@ -142,6 +142,15 @@ class STLManagerApp(ctk.CTk):
         ctk.CTkEntry(self.filter_frame, textvariable=self.max_faces, width=70, font=self.small_font).pack(side="left", padx=2)
         ctk.CTkButton(self.filter_frame, text="Применить", command=lambda: self.refresh_files(),
                       width=80, font=self.small_font).pack(side="left", padx=10)
+        ctk.CTkButton(
+            self.filter_frame,
+            text="✖ Сброс",
+            command=self._reset_filters,
+            width=60,
+            font=self.small_font,
+            fg_color="transparent",
+            border_width=1
+        ).pack(side="left", padx=5)
 
         # Основная область
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -359,12 +368,19 @@ class STLManagerApp(ctk.CTk):
 
         logger.info(f"Выбран путь: {path} -> чистый: {clean_path}")
 
-        if clean_path.endswith('.stl'):
+        # Проверяем, является ли это файлом (есть расширение)
+        is_file = bool(Path(clean_path).suffix)
+
+        if is_file:
+            # Это файл (включая .zip, .stl) — фильтруем по имени
             self.selected_path = None
-            self.search_var.set(Path(clean_path).stem)
+            # Убираем расширение для поиска
+            search_name = Path(clean_path).stem
+            self.search_var.set(search_name)
         else:
+            # Это папка — фильтруем по relative_path
             self.selected_path = clean_path
-            self.search_var.set("")
+            self.search_var.set("")  # Сбрасываем поиск
 
         self.refresh_files()
 
@@ -449,3 +465,12 @@ class STLManagerApp(ctk.CTk):
             self.current_worker.cancel()
         # У Database нет метода close, просто завершаем работу
         self.destroy()
+
+    def _reset_filters(self):
+        """Сбрасывает все фильтры."""
+        self.search_var.set("")
+        self.min_faces.set("0")
+        self.max_faces.set("9999999")
+        self.selected_path = None
+        self.refresh_files()
+        logger.info("Фильтры сброшены")

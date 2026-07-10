@@ -25,17 +25,15 @@ class FileCard(ctk.CTkFrame):
         self.on_open = on_open
         self.on_preview = on_preview
 
-        # Шрифты
         self.title_font = ctk.CTkFont(family=font_family, size=font_size, weight="bold")
         self.normal_font = ctk.CTkFont(family=font_family, size=font_size - 1)
         self.small_font = ctk.CTkFont(family=font_family, size=font_size - 2)
         self.badge_font = ctk.CTkFont(family=font_family, size=font_size - 3, weight="bold")
 
-        # Данные
         self.file_id = file_data[0]
-        self.file_name = file_data[1]
-        self.file_path = file_data[2]
-        self.file_size = file_data[3]
+        self.file_name = file_data[1] or "Без имени"
+        self.file_path = file_data[2] or ""
+        self.file_size = file_data[3] or 0
         self.face_count = file_data[5] if len(file_data) > 5 else 0
         self.bbox_x = file_data[6] if len(file_data) > 6 else 0
         self.bbox_y = file_data[7] if len(file_data) > 7 else 0
@@ -51,16 +49,9 @@ class FileCard(ctk.CTkFrame):
         self._create_widgets()
 
     def _create_widgets(self):
-        # Рамка
-        if self.is_from_archive:
-            border = "#FF9800"
-        elif not self.is_valid:
-            border = "#F44336"
-        else:
-            border = "#4CAF50"
+        border = "#FF9800" if self.is_from_archive else ("#4CAF50" if self.is_valid else "#F44336")
         self.configure(border_width=2, border_color=border)
 
-        # Миниатюра (кликабельная)
         self.thumb_btn = ctk.CTkButton(
             self, text="", width=200, height=200,
             fg_color="gray20", hover_color="gray30",
@@ -69,41 +60,34 @@ class FileCard(ctk.CTkFrame):
         self.thumb_btn.pack(padx=10, pady=(10, 5))
         self._load_thumbnail()
 
-        # Бейдж
         badge_frame = ctk.CTkFrame(self, fg_color="transparent")
         badge_frame.pack(fill="x", padx=10, pady=(0, 5))
 
         if self.is_from_archive:
-            color = "#FF9800"
-            text = "📦 Архив"
+            color, text = "#FF9800", "📦 Архив"
         elif self.thumb_source == 'existing':
-            color = "#2196F3"
-            text = "🖼 Готовое"
+            color, text = "#2196F3", "🖼 Готовое"
         else:
-            color = "#4CAF50"
-            text = "🔷 STL"
+            color, text = "#4CAF50", "🔷 STL"
 
         badge = ctk.CTkFrame(badge_frame, fg_color=color, corner_radius=4)
         badge.pack(side="left")
         ctk.CTkLabel(badge, text=text, font=self.badge_font, text_color="white").pack(padx=6, pady=2)
 
-        # Имя файла
         name = str(self.file_name)[:28] + "..." if len(str(self.file_name)) > 28 else str(self.file_name)
         ctk.CTkLabel(self, text=name, font=self.title_font, anchor="w", wraplength=200).pack(
             padx=10, pady=(0, 5), fill="x")
 
-        # Инфо
         info = ctk.CTkFrame(self, fg_color="transparent")
         info.pack(padx=10, pady=5, fill="x")
 
-        face_txt = f"🔺 {self.face_count:,}" if self.face_count else "🔺 Н/Д"
+        face_txt = f"🔺 {self.face_count:,}" if self.face_count else "🔺 Архив"
         ctk.CTkLabel(info, text=face_txt, font=self.normal_font, anchor="w").pack(fill="x")
 
         if self.bbox_x:
             ctk.CTkLabel(info, text=f"📐 {self.bbox_x:.1f}×{self.bbox_y:.1f}×{self.bbox_z:.1f}",
                         font=self.small_font, text_color="gray", anchor="w").pack(fill="x")
 
-        # Статус
         if not self.is_valid:
             st, sc = "⚠ Повреждён", "#FF6B6B"
         elif self.has_thumbnail:
@@ -114,7 +98,6 @@ class FileCard(ctk.CTkFrame):
         ctk.CTkLabel(self, text=st, font=self.small_font, text_color=sc, anchor="w").pack(
             padx=10, pady=(2, 5), fill="x")
 
-        # Кнопка
         btn_text = "📂 Открыть папку" if not self.is_from_archive else "📦 Архив"
         ctk.CTkButton(self, text=btn_text, command=self._open_file,
                      font=self.small_font, fg_color="transparent",
@@ -123,16 +106,32 @@ class FileCard(ctk.CTkFrame):
         self.configure(width=240, height=400)
 
     def _load_thumbnail(self):
+        """Загружает миниатюру."""
         try:
             if self.thumbnail_path and Path(str(self.thumbnail_path)).exists():
                 img = Image.open(str(self.thumbnail_path))
                 self._photo = CTkImage(light_image=img, dark_image=img, size=THUMB_SIZE)
                 self.thumb_btn.configure(image=self._photo, text="", fg_color="transparent")
             else:
-                self.thumb_btn.configure(text="Нет\nпревью", font=self.normal_font)
+                self._show_placeholder()
         except Exception as e:
-            logger.debug(f"Ошибка загрузки превью: {e}")
-            self.thumb_btn.configure(text="Ошибка", font=self.normal_font)
+            logger.error(f"Ошибка загрузки превью: {e}")
+            self._show_placeholder()
+
+    def _show_placeholder(self):
+        """Показывает заглушку если нет превью."""
+        if self.is_from_archive:
+            text = "📦\nАрхив"
+        elif not self.is_valid:
+            text = "⚠\nОшибка"
+        else:
+            text = "🔷\nНет\nпревью"
+
+        self.thumb_btn.configure(
+            text=text,
+            image=None,
+            fg_color="gray20"
+        )
 
     def _on_thumb_click(self):
         """Открыть превью при клике."""

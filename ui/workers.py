@@ -195,24 +195,19 @@ class RenderWorker(BackgroundTask):
                     archive_name = original_name
                     archive_path_on_disk = None
 
-                    # Ищем архив на диске в файлах проекта
-                    all_files = self.db.get_files_for_project(self.project_id)
-                    for record in all_files:
-                        path = record[2]
-                        if not path.startswith("[ARCHIVE]") and path.endswith(archive_name):
-                            archive_path_on_disk = path
-                            break
+                    # Ищем архив на диске
+                    conn = self.db._get_connection()
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT root_path FROM projects WHERE id = ?", (self.project_id,))
+                    root = cursor.fetchone()
 
-                    # Если не нашли — ищем в корне проекта
-                    if not archive_path_on_disk:
-                        conn = self.db._get_connection()
-                        cursor = conn.cursor()
-                        cursor.execute("SELECT root_path FROM projects WHERE id = ?", (self.project_id,))
-                        root = cursor.fetchone()
-                        if root and os.path.exists(root[0]):
-                            candidate = os.path.join(root[0], archive_name)
-                            if os.path.exists(candidate):
-                                archive_path_on_disk = candidate
+                    if root and os.path.exists(root[0]):
+                        # Рекурсивно ищем архив в корневой папке
+                        for dirpath, _, filenames in os.walk(root[0]):
+                            if archive_name in filenames:
+                                archive_path_on_disk = os.path.join(dirpath, archive_name)
+                                logger.info(f"  Найден архив: {archive_path_on_disk}")
+                                break
 
                     if archive_path_on_disk:
                         archive_dir = Path(archive_path_on_disk).parent
