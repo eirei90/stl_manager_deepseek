@@ -298,7 +298,7 @@ class RenderWorker(BackgroundTask):
                         success = self.renderer.render_to_jpeg(extracted, str(thumb_path))
                         shutil.rmtree(extract_dir, ignore_errors=True)
 
-                        if success and thumb_path.exists() and thumb_path.stat().st_size > 15000:
+                        if success and thumb_path.exists() and thumb_path.stat().st_size > 100:
                             self.db.update_thumbnail_status(file_id, str(thumb_path), is_existing=0)
                             rendered += 1
                             logger.info(f"  ✅ Превью создано")
@@ -372,7 +372,7 @@ class RenderWorker(BackgroundTask):
                 # 3. Рендерим
                 logger.info(f"[{idx}/{total}] Рендеринг: {file_name}")
                 success = self.renderer.render_to_jpeg(str(stl_path), str(thumb_path))
-                if success and thumb_path.exists() and thumb_path.stat().st_size > 15000:
+                if success and thumb_path.exists() and thumb_path.stat().st_size > 100:
                     self.db.update_thumbnail_status(file_id, str(thumb_path), is_existing=0)
                     rendered += 1
                 else:
