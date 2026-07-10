@@ -114,9 +114,20 @@ class STLManagerApp(ctk.CTk):
                                       command=self.start_scan, state="disabled", width=140, font=self.btn_font)
         self.btn_render = ctk.CTkButton(self.toolbar, text="🖼 Превью",
                                         command=self.start_render, state="disabled", width=120, font=self.btn_font)
+        self.btn_refresh_thumbs = ctk.CTkButton(
+            self.toolbar,
+            text="🔄 Обновить превью",
+            command=self.start_refresh_thumbs,
+            state="disabled",
+            width=150,
+            font=self.btn_font,
+            fg_color="#2196F3",
+            hover_color="#1976D2"
+        )
         self.btn_stop = ctk.CTkButton(self.toolbar, text="⏹ Стоп",
                                       command=self.stop_operation, state="disabled",
                                       width=100, font=self.btn_font, fg_color="#D32F2F")
+        self.btn_refresh_thumbs.grid(row=0, column=5, padx=3)
         self.lbl_folder = ctk.CTkLabel(self.toolbar, text="Папка не выбрана",
                                        anchor="w", font=self.normal_font)
 
@@ -188,7 +199,7 @@ class STLManagerApp(ctk.CTk):
         self.grid_rowconfigure(4, weight=0)
 
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        self.toolbar.grid_columnconfigure(4, weight=1)
+        self.toolbar.grid_columnconfigure(6, weight=1)  # Было 4, теперь 6
 
         self.btn_folder.grid(row=0, column=0, padx=3)
         self.btn_scan.grid(row=0, column=1, padx=3)
@@ -325,6 +336,34 @@ class STLManagerApp(ctk.CTk):
         self._set_state("idle")
         self.refresh_files()
 
+    def start_refresh_thumbs(self):
+        """Пересоздаёт превью для файлов с заглушками."""
+        if not self.current_project_id:
+            messagebox.showwarning("Предупреждение", "Сначала выполните сканирование!")
+            return
+
+        # Подтверждение
+        result = messagebox.askyesno(
+            "Обновить превью",
+            "Будут пересозданы превью для файлов с заглушками.\n"
+            "Существующие превью не будут затронуты.\n\nПродолжить?"
+        )
+        if not result:
+            return
+
+        self._set_state("rendering")
+
+        from ui.workers import RefreshThumbsWorker, CancellationToken
+        token = CancellationToken()
+        self.current_worker = RefreshThumbsWorker(
+            self.renderer, self.db, self.current_project_id,
+            cancellation_token=token,
+            on_progress=lambda c, t: self.after(0, lambda: self._update_progress(c, t, "Обновление")),
+            on_complete=lambda n: self.after(0, lambda: self._finish_render(n)),
+            on_error=lambda e: self.after(0, lambda: self._on_error(e))
+        )
+        self.current_worker.start()
+
     def stop_operation(self):
         if self.current_worker:
             self.current_worker.cancel()
@@ -343,11 +382,13 @@ class STLManagerApp(ctk.CTk):
             self.btn_folder.configure(state="disabled")
             self.btn_scan.configure(state="disabled")
             self.btn_render.configure(state="disabled")
+            self.btn_refresh_thumbs.configure(state="disabled")
             self.btn_stop.configure(state="normal")
         else:
             self.btn_folder.configure(state="normal")
             self.btn_scan.configure(state="normal" if self.current_root_path else "disabled")
             self.btn_render.configure(state="normal" if self.current_project_id else "disabled")
+            self.btn_refresh_thumbs.configure(state="normal" if self.current_project_id else "disabled")
             self.btn_stop.configure(state="disabled")
 
     def refresh_tree(self):
@@ -387,6 +428,11 @@ class STLManagerApp(ctk.CTk):
     def refresh_files(self):
         for w in self.cards_frame.winfo_children():
             w.destroy()
+
+        # После удаления файлов может измениться дерево
+        if self.current_project_id:
+            self.db.update_project_stats(self.current_project_id)
+            self.refresh_tree()
 
         if not self.current_project_id:
             ctk.CTkLabel(

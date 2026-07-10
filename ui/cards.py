@@ -8,6 +8,8 @@ from customtkinter import CTkImage
 from PIL import Image
 from pathlib import Path
 import logging
+import tkinter as tk
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +49,15 @@ class FileCard(ctk.CTkFrame):
 
         self._photo = None
         self._create_widgets()
+
+    def _get_db(self):
+        """Получает объект БД из главного окна приложения."""
+        widget = self.master
+        while widget is not None:
+            if hasattr(widget, 'db'):
+                return widget.db
+            widget = widget.master
+        return None
 
     def _create_widgets(self):
         border = "#FF9800" if self.is_from_archive else ("#4CAF50" if self.is_valid else "#F44336")
@@ -105,6 +116,10 @@ class FileCard(ctk.CTkFrame):
 
         self.configure(width=240, height=400)
 
+        self.bind("<Button-3>", self._show_context_menu)
+        for child in self.winfo_children():
+            child.bind("<Button-3>", self._show_context_menu)
+
     def _load_thumbnail(self):
         """Загружает миниатюру."""
         try:
@@ -117,6 +132,162 @@ class FileCard(ctk.CTkFrame):
         except Exception as e:
             logger.error(f"Ошибка загрузки превью: {e}")
             self._show_placeholder()
+
+    def _show_context_menu(self, event):
+        """Показывает контекстное меню при правом клике."""
+        menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
+                       activebackground="#4a4a4a", activeforeground="white")
+
+        if self.is_from_archive:
+            archive_name = self.file_path.replace("[ARCHIVE] ", "")
+            if archive_name.endswith(('.zip', '.7z', '.rar')):
+                menu.add_command(
+                    label="🗑 Удалить архив и превью",
+                    command=self._delete_file
+                )
+            else:
+                menu.add_command(
+                    label="🗑 Удалить запись о файле",
+                    command=self._delete_file
+                )
+        else:
+            menu.add_command(
+                label="🗑 Удалить STL и превью",
+                command=self._delete_file
+            )
+
+        menu.add_command(
+            label="🖼 Удалить только превью",
+            command=self._delete_thumbnail
+        )
+        menu.add_command(
+            label="📂 Открыть папку",
+            command=self._open_file
+        )
+
+        try:
+            menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            menu.grab_release()
+
+    def _delete_file(self):
+        """Удаляет файл и его превью (STL или архив)."""
+        from tkinter import messagebox
+
+        file_type = "архив" if self.is_from_archive else "STL-файл"
+
+        result = messagebox.askyesno(
+            "Подтверждение",
+            f"Удалить {file_type} и превью?\n\n{self.file_name}\n\nЭто действие нельзя отменить!"
+        )
+        if not result:
+            return
+
+        db = self._get_db()
+
+        # Удаляем превью
+        if self.thumbnail_path:
+            thumb_file = Path(str(self.thumbnail_path))
+            if thumb_file.exists():
+                try:
+                    thumb_file.unlink()
+                    logger.info(f"Удалено превью: {thumb_file}")
+                except Exception as e:
+                    logger.error(f"Ошибка удаления превью: {e}")
+
+        # Удаляем сам файл (STL или архив)
+        if self.is_from_archive:
+            # Ищем архив на диске по имени
+            archive_name = self.file_path.replace("[ARCHIVE] ", "")
+            if archive_name.endswith(('.zip', '.7z', '.rar')):
+                # Это сам архив — ищем его
+                if db:
+                    try:
+                        conn = db._get_connection()
+                        cursor = conn.cursor()
+                        cursor.execute("SELECT root_path FROM projects WHERE id = (SELECT project_id FROM files WHERE id = ?)",
+                                     (self.file_id,))
+                        root = cursor.fetchone()
+                        if root:
+                            for dirpath, _, filenames in os.walk(root[0]):
+                                if archive_name in filenames:
+                                    archive_path = os.path.join(dirpath, archive_name)
+                                    try:
+                                        os.remove(archive_path)
+                                        logger.info(f"Удалён архив: {archive_path}")
+                                    except Exception as e:
+                                        logger.error(f"Ошибка удаления архива: {e}")
+                                    break
+                    except Exception as e:
+                        logger.error(f"Ошибка поиска архива: {e}")
+            else:
+                # Это файл внутри архива — удаляем запись, но не сам файл в архиве
+                logger.info(f"Файл внутри архива, удаляется только запись: {archive_name}")
+        else:
+            # Обычный STL-файл
+            stl_file = Path(str(self.file_path))
+            if stl_file.exists():
+                try:
+                    stl_file.unlink()
+                    logger.info(f"Удалён файл: {stl_file}")
+                except Exception as e:
+                    logger.error(f"Ошибка удаления файла: {e}")
+
+        # Удаляем запись из БД
+        if db:
+            try:
+                conn = db._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM thumbnails WHERE file_id = ?", (self.file_id,))
+                cursor.execute("DELETE FROM files WHERE id = ?", (self.file_id,))
+                conn.commit()
+                logger.info(f"Удалена запись из БД: {self.file_name}")
+            except Exception as e:
+                logger.error(f"Ошибка удаления из БД: {e}")
+
+        # Удаляем карточку из UI
+        self.destroy()
+
+    def _delete_thumbnail(self):
+        """Удаляет только превью."""
+        from tkinter import messagebox
+
+        result = messagebox.askyesno(
+            "Подтверждение",
+            f"Удалить только превью?\n\n{self.file_name}"
+        )
+        if not result:
+            return
+
+        db = self._get_db()
+
+        # Удаляем файл превью
+        if self.thumbnail_path:
+            thumb_file = Path(str(self.thumbnail_path))
+            if thumb_file.exists():
+                try:
+                    thumb_file.unlink()
+                    logger.info(f"Удалено превью: {thumb_file}")
+                except Exception as e:
+                    logger.error(f"Ошибка удаления превью: {e}")
+
+        # Обновляем БД
+        if db:
+            try:
+                conn = db._get_connection()
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM thumbnails WHERE file_id = ?", (self.file_id,))
+                cursor.execute("UPDATE files SET has_thumbnail = 0, thumbnail_source = 'none' WHERE id = ?",
+                              (self.file_id,))
+                conn.commit()
+                logger.info(f"Превью удалено из БД: {self.file_name}")
+            except Exception as e:
+                logger.error(f"Ошибка обновления БД: {e}")
+
+        # Обновляем карточку
+        self.has_thumbnail = 0
+        self.thumbnail_path = None
+        self._show_placeholder()
 
     def _show_placeholder(self):
         """Показывает заглушку если нет превью."""
