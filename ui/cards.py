@@ -72,23 +72,22 @@ class FileCard(ctk.CTkFrame):
         self.thumb_btn.pack(padx=10, pady=(10, 5))
         self._load_thumbnail()
 
-        # Иконка типа файла
+        # Бейдж типа файла
         badge_frame = ctk.CTkFrame(self, fg_color="transparent")
         badge_frame.pack(fill="x", padx=10, pady=(0, 5))
 
         if self.is_from_archive:
-            color, letter = "#FF9800", "A"
+            color, text = "#FF9800", "📦 Архив"
         elif self.file_ext == '.obj':
-            color, letter = "#9C27B0", "O"
+            color, text = "#9C27B0", "🔷 OBJ"
         elif self.thumb_source == 'existing':
-            color, letter = "#2196F3", "E"
+            color, text = "#2196F3", "🖼 Готовое"
         else:
-            color, letter = "#4CAF50", "S"
+            color, text = "#4CAF50", "🔷 STL"
 
-        icon = ctk.CTkFrame(badge_frame, width=24, height=24, fg_color=color, corner_radius=12)
-        icon.pack_propagate(False)
-        icon.pack(side="left")
-        ctk.CTkLabel(icon, text=letter, font=self.badge_font, text_color="white").pack(expand=True)
+        badge = ctk.CTkFrame(badge_frame, fg_color=color, corner_radius=4)
+        badge.pack(side="left")
+        ctk.CTkLabel(badge, text=text, font=self.badge_font, text_color="white").pack(padx=6, pady=2)
 
         name = str(self.file_name)[:28] + "..." if len(str(self.file_name)) > 28 else str(self.file_name)
         ctk.CTkLabel(self, text=name, font=self.title_font, anchor="w", wraplength=200).pack(

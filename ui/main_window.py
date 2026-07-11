@@ -1,7 +1,8 @@
 """
 Главное окно приложения STL Manager.
 Содержит панель инструментов, дерево каталога, карточки файлов с пагинацией,
-горячие клавиши, хлебные крошки и прогресс-бар с детализацией.
+горячие клавиши, хлебные крошки, прогресс-бар с детализацией и иконки типов.
+Добавлена возможность ввода номера страницы для перехода.
 """
 
 import customtkinter as ctk
@@ -151,17 +152,25 @@ class STLManagerApp(ctk.CTk):
         ctk.CTkButton(self.filter_frame, text="Применить", command=self._reset_and_refresh,
                       width=80, font=self.small_font).pack(side="left", padx=10)
 
-        # Пагинация
+        # Пагинация с полем ввода
         self.page_frame = ctk.CTkFrame(self, height=30)
         self.page_frame.pack_propagate(False)
         self.btn_prev = ctk.CTkButton(self.page_frame, text="◀", command=self._prev_page,
                                       width=30, font=self.small_font, state="disabled")
         self.btn_prev.pack(side="left", padx=2)
-        self.lbl_page = ctk.CTkLabel(self.page_frame, text="0 / 0", font=self.small_font, width=100)
+        self.lbl_page = ctk.CTkLabel(self.page_frame, text="0 / 0", font=self.small_font, width=80)
         self.lbl_page.pack(side="left", padx=5)
         self.btn_next = ctk.CTkButton(self.page_frame, text="▶", command=self._next_page,
                                       width=30, font=self.small_font, state="disabled")
         self.btn_next.pack(side="left", padx=2)
+
+        # Поле ввода номера страницы
+        ctk.CTkLabel(self.page_frame, text="Страница", font=self.small_font).pack(side="left", padx=(15, 5))
+        self.entry_page = ctk.CTkEntry(self.page_frame, width=50, font=self.small_font,
+                                       placeholder_text="№")
+        self.entry_page.pack(side="left", padx=5)
+        ctk.CTkButton(self.page_frame, text="Перейти", command=self._goto_page,
+                      width=60, font=self.small_font).pack(side="left", padx=5)
 
         # Основная область
         self.main_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -287,11 +296,30 @@ class STLManagerApp(ctk.CTk):
             self.current_page += 1
             self._show_page()
 
+    def _goto_page(self):
+        """Перейти на страницу, указанную в поле entry_page."""
+        try:
+            page_input = int(self.entry_page.get())
+        except ValueError:
+            messagebox.showwarning("Ошибка", "Введите число")
+            return
+
+        total_pages = max(1, (len(self.all_files) + self.page_size - 1) // self.page_size)
+        if page_input < 1 or page_input > total_pages:
+            messagebox.showwarning("Ошибка", f"Страница должна быть от 1 до {total_pages}")
+            return
+
+        self.current_page = page_input - 1
+        self._show_page()
+
     def _update_pagination_controls(self):
         total_pages = max(1, (len(self.all_files) + self.page_size - 1) // self.page_size)
         self.lbl_page.configure(text=f"{self.current_page + 1} / {total_pages}")
         self.btn_prev.configure(state="normal" if self.current_page > 0 else "disabled")
         self.btn_next.configure(state="normal" if self.current_page < total_pages - 1 else "disabled")
+        # Обновляем поле ввода
+        self.entry_page.delete(0, "end")
+        self.entry_page.insert(0, str(self.current_page + 1))
 
     def _show_page(self):
         for w in self.cards_frame.winfo_children():
