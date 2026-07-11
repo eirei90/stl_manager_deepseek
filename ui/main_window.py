@@ -578,6 +578,12 @@ class STLManagerApp(ctk.CTk):
     def stop_operation(self):
         if self.current_worker:
             self.current_worker.cancel()
+            self.current_worker = None
+        # Немедленно разблокируем интерфейс и сбрасываем прогресс
+        self.progress.set(0)
+        self.lbl_progress.configure(text="Остановлено")
+        self.lbl_progress_detail.configure(text="")
+        self._set_state("idle")
 
     def _on_error(self, msg):
         messagebox.showerror("Ошибка", msg)

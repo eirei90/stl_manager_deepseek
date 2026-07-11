@@ -156,20 +156,53 @@ class FileCard(ctk.CTkFrame):
 
     # ---------- контекстное меню ----------
     def _show_context_menu(self, event):
+        # Закрываем предыдущее меню, если висит
+        self._cleanup_menu()
+
         menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
                        activebackground="#4a4a4a", activeforeground="white")
 
         if self.on_render_single:
             menu.add_command(label="🖼 Создать превью", command=self._render_this_file)
-
         menu.add_command(label="🗑 Удалить файл и превью", command=self._delete_file)
         menu.add_command(label="🖼 Удалить только превью", command=self._delete_thumbnail)
         menu.add_command(label="📂 Открыть папку", command=self._open_file)
 
-        try:
-            menu.tk_popup(event.x_root, event.y_root)
-        finally:
-            menu.grab_release()
+        menu.post(event.x_root, event.y_root)
+        self._menu = menu
+
+        # Вешаем обработчики на главное окно – любой клик закроет меню
+        top = self.winfo_toplevel()
+        self._menu_bind_ids = []
+
+        def on_click(e):
+            self._cleanup_menu()
+
+        # Сохраняем ID биндингов для последующего удаления
+        id1 = top.bind("<Button-1>", on_click, add="+")
+        id2 = top.bind("<Button-3>", on_click, add="+")
+        self._menu_bind_ids = [("<Button-1>", id1), ("<Button-3>", id2)]
+
+        # При уничтожении карточки тоже подчищаем
+        self.bind("<Destroy>", lambda e: self._cleanup_menu(), add="+")
+
+    def _cleanup_menu(self):
+        """Убирает меню и все связанные с ним глобальные биндинги."""
+        if hasattr(self, '_menu') and self._menu:
+            try:
+                self._menu.unpost()
+            except:
+                pass
+            self._menu = None
+
+        if hasattr(self, '_menu_bind_ids') and self._menu_bind_ids:
+            top = self.winfo_toplevel()
+            for event, bind_id in self._menu_bind_ids:
+                try:
+                    top.unbind(event, bind_id)
+                except:
+                    pass
+            self._menu_bind_ids = []
 
     def _render_this_file(self):
         """Запускает рендеринг текущего файла."""
