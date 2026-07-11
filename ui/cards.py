@@ -159,12 +159,13 @@ class FileCard(ctk.CTkFrame):
         menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
                        activebackground="#4a4a4a", activeforeground="white")
 
-        if not self.is_from_archive and self.on_render_single:
+        if self.on_render_single:
             menu.add_command(label="🖼 Создать превью", command=self._render_this_file)
 
         menu.add_command(label="🗑 Удалить файл и превью", command=self._delete_file)
         menu.add_command(label="🖼 Удалить только превью", command=self._delete_thumbnail)
         menu.add_command(label="📂 Открыть папку", command=self._open_file)
+
         try:
             menu.tk_popup(event.x_root, event.y_root)
         finally:

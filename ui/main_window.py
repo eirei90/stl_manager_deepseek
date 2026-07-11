@@ -421,15 +421,15 @@ class STLManagerApp(ctk.CTk):
 
     # ---------- рендеринг страницы ----------
     def start_render_page(self):
-        """Запускает рендеринг только для файлов на текущей странице."""
+        """Запускает рендеринг только для файлов на текущей странице, включая архивы."""
         if not self.current_project_id or not self.all_files:
             return
         start = self.current_page * self.page_size
         end = start + self.page_size
         page_files = self.all_files[start:end]
 
-        # Фильтруем: только реально существующие файлы (не из архивов)
-        files_to_render = [f for f in page_files if not str(f[2]).startswith("[ARCHIVE]")]
+        # Больше не фильтруем – рендерим все записи на странице (архивы, файлы внутри архивов, обычные STL/OBJ)
+        files_to_render = page_files
 
         if not files_to_render:
             messagebox.showinfo("Информация", "На странице нет файлов для рендеринга")
@@ -444,8 +444,7 @@ class STLManagerApp(ctk.CTk):
             worker.renderer = self.renderer
             worker.db = self.db
             worker.project_id = self.current_project_id
-            # Используем специальный метод для пакетной обработки
-            return worker._batch_render_files(progress_cb, cancel_token, files_to_render)
+            return worker._batch_render(progress_cb, cancel_token, custom_files=files_to_render)
 
         self.current_worker = BackgroundTask(
             target=page_target,
@@ -627,17 +626,47 @@ class STLManagerApp(ctk.CTk):
 
     def _open_location(self, path):
         if path.startswith("[ARCHIVE]"):
-            messagebox.showinfo("Архив", f"Файл в архиве:\n{path}")
+            # Извлекаем имя архива из специального пути
+            archive_name = path.replace("[ARCHIVE] ", "")
+            # Ищем архив в файловой системе проекта
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT root_path FROM projects WHERE id = ?", (self.current_project_id,))
+            root = cursor.fetchone()
+            if root:
+                for dirpath, _, filenames in os.walk(root[0]):
+                    if archive_name in filenames:
+                        archive_path = os.path.join(dirpath, archive_name)
+                        # Открываем папку, содержащую архив
+                        try:
+                            s = platform.system()
+                            if s == "Windows":
+                                os.startfile(os.path.dirname(archive_path))
+                            elif s == "Darwin":
+                                subprocess.run(["open", os.path.dirname(archive_path)])
+                            else:
+                                subprocess.run(["xdg-open", os.path.dirname(archive_path)])
+                        except Exception as e:
+                            logger.error(f"Ошибка открытия папки архива: {e}")
+                        return
+            messagebox.showinfo("Архив", f"Архив не найден на диске:\n{archive_name}")
             return
+
+        # Обычный файл (STL/OBJ)
         p = Path(path)
         if p.exists():
             try:
                 s = platform.system()
-                if s == "Windows": os.startfile(p.parent)
-                elif s == "Darwin": subprocess.run(["open", str(p.parent)])
-                else: subprocess.run(["xdg-open", str(p.parent)])
+                if s == "Windows":
+                    os.startfile(p.parent)
+                elif s == "Darwin":
+                    subprocess.run(["open", str(p.parent)])
+                else:
+                    subprocess.run(["xdg-open", str(p.parent)])
             except Exception as e:
-                logger.error(f"Ошибка открытия: {e}")
+                logger.error(f"Ошибка открытия папки: {e}")
+        else:
+            messagebox.showwarning("Файл не найден", f"Файл не существует:\n{path}")
 
     def _open_preview(self, path):
         ImagePreviewWindow(self, path)
