@@ -1,6 +1,6 @@
 """
 Виджет карточки STL-файла.
-Показывает миниатюру, метаданные, иконку типа файла.
+Показывает миниатюру, метаданные, иконку типа файла, контекстное меню с рендерингом.
 """
 
 import customtkinter as ctk
@@ -20,12 +20,14 @@ class FileCard(ctk.CTkFrame):
     """Карточка одного STL/OBJ-файла."""
 
     def __init__(self, master, file_data, on_open=None, on_preview=None,
+                 on_render_single=None,   # новый callback
                  font_family="Arial", font_size=12, **kwargs):
         super().__init__(master, corner_radius=10, **kwargs)
 
         self.file_data = file_data
         self.on_open = on_open
         self.on_preview = on_preview
+        self.on_render_single = on_render_single   # сохраняем
 
         self.title_font = ctk.CTkFont(family=font_family, size=font_size, weight="bold")
         self.normal_font = ctk.CTkFont(family=font_family, size=font_size - 1)
@@ -51,7 +53,6 @@ class FileCard(ctk.CTkFrame):
         self._photo = None
         self._create_widgets()
 
-    # ------------------------------------------------------------
     def _get_db(self):
         widget = self.master
         while widget is not None:
@@ -124,7 +125,6 @@ class FileCard(ctk.CTkFrame):
         for child in self.winfo_children():
             child.bind("<Button-3>", self._show_context_menu)
 
-    # ------------------------------------------------------------
     def _load_thumbnail(self):
         try:
             if self.thumbnail_path and Path(str(self.thumbnail_path)).exists():
@@ -154,11 +154,14 @@ class FileCard(ctk.CTkFrame):
         if self.on_open and self.file_path:
             self.on_open(str(self.file_path))
 
-    # ------------------------------------------------------------
-    # контекстное меню
+    # ---------- контекстное меню ----------
     def _show_context_menu(self, event):
         menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
                        activebackground="#4a4a4a", activeforeground="white")
+
+        if not self.is_from_archive and self.on_render_single:
+            menu.add_command(label="🖼 Создать превью", command=self._render_this_file)
+
         menu.add_command(label="🗑 Удалить файл и превью", command=self._delete_file)
         menu.add_command(label="🖼 Удалить только превью", command=self._delete_thumbnail)
         menu.add_command(label="📂 Открыть папку", command=self._open_file)
@@ -166,6 +169,11 @@ class FileCard(ctk.CTkFrame):
             menu.tk_popup(event.x_root, event.y_root)
         finally:
             menu.grab_release()
+
+    def _render_this_file(self):
+        """Запускает рендеринг текущего файла."""
+        if self.on_render_single:
+            self.on_render_single(self.file_data)
 
     def _delete_file(self):
         from tkinter import messagebox
@@ -175,21 +183,18 @@ class FileCard(ctk.CTkFrame):
             return
 
         db = self._get_db()
-        # удаление превью
         if self.thumbnail_path:
             thumb = Path(str(self.thumbnail_path))
             if thumb.exists():
                 try: thumb.unlink()
                 except: pass
 
-        # удаление файла/архива
         if not self.is_from_archive:
             fp = Path(str(self.file_path))
             if fp.exists():
                 try: fp.unlink()
                 except: pass
 
-        # удаление из БД
         if db:
             try:
                 conn = db._get_connection()

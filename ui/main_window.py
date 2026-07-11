@@ -1,8 +1,8 @@
 """
 Главное окно приложения STL Manager.
 Содержит панель инструментов, дерево каталога, карточки файлов с пагинацией,
-горячие клавиши, хлебные крошки, прогресс-бар с детализацией и иконки типов.
-Добавлена возможность ввода номера страницы для перехода.
+горячие клавиши, хлебные крошки, прогресс-бар с детализацией, иконки типов,
+возможность рендеринга одного файла или текущей страницы.
 """
 
 import customtkinter as ctk
@@ -17,6 +17,7 @@ import subprocess
 import re
 from PIL import Image
 from typing import Optional, Tuple
+from ui.workers import BackgroundTask, RenderWorker, CancellationToken
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -108,8 +109,10 @@ class STLManagerApp(ctk.CTk):
                                         command=self.select_folder, width=140, font=self.btn_font)
         self.btn_scan = ctk.CTkButton(self.toolbar, text="🔍 Сканировать",
                                       command=self.start_scan, state="disabled", width=140, font=self.btn_font)
-        self.btn_render = ctk.CTkButton(self.toolbar, text="🖼 Превью",
-                                        command=self.start_render, state="disabled", width=120, font=self.btn_font)
+        self.btn_render = ctk.CTkButton(self.toolbar, text="🖼 Всё превью",
+                                        command=self.start_render, state="disabled", width=130, font=self.btn_font)
+        self.btn_render_page = ctk.CTkButton(self.toolbar, text="📄 Превью страницы",
+                                             command=self.start_render_page, state="disabled", width=150, font=self.btn_font)
         self.btn_refresh_thumbs = ctk.CTkButton(self.toolbar, text="🔄 Обновить",
                                                 command=self.start_refresh_thumbs, state="disabled",
                                                 width=120, font=self.btn_font, fg_color="#2196F3")
@@ -164,7 +167,6 @@ class STLManagerApp(ctk.CTk):
                                       width=30, font=self.small_font, state="disabled")
         self.btn_next.pack(side="left", padx=2)
 
-        # Поле ввода номера страницы
         ctk.CTkLabel(self.page_frame, text="Страница", font=self.small_font).pack(side="left", padx=(15, 5))
         self.entry_page = ctk.CTkEntry(self.page_frame, width=50, font=self.small_font,
                                        placeholder_text="№")
@@ -193,14 +195,15 @@ class STLManagerApp(ctk.CTk):
         self.grid_rowconfigure(6, weight=0)  # статус
 
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        self.toolbar.grid_columnconfigure(6, weight=1)
+        self.toolbar.grid_columnconfigure(7, weight=1)
         self.btn_folder.grid(row=0, column=0, padx=3)
         self.btn_scan.grid(row=0, column=1, padx=3)
         self.btn_render.grid(row=0, column=2, padx=3)
-        self.btn_refresh_thumbs.grid(row=0, column=3, padx=3)
-        self.btn_delete_missing.grid(row=0, column=4, padx=3)
-        self.btn_stop.grid(row=0, column=5, padx=3)
-        self.lbl_folder.grid(row=0, column=6, padx=10, sticky="w")
+        self.btn_render_page.grid(row=0, column=3, padx=3)
+        self.btn_refresh_thumbs.grid(row=0, column=4, padx=3)
+        self.btn_delete_missing.grid(row=0, column=5, padx=3)
+        self.btn_stop.grid(row=0, column=6, padx=3)
+        self.lbl_folder.grid(row=0, column=7, padx=10, sticky="w")
 
         self.breadcrumb_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0,2))
 
@@ -297,18 +300,15 @@ class STLManagerApp(ctk.CTk):
             self._show_page()
 
     def _goto_page(self):
-        """Перейти на страницу, указанную в поле entry_page."""
         try:
             page_input = int(self.entry_page.get())
         except ValueError:
             messagebox.showwarning("Ошибка", "Введите число")
             return
-
         total_pages = max(1, (len(self.all_files) + self.page_size - 1) // self.page_size)
         if page_input < 1 or page_input > total_pages:
             messagebox.showwarning("Ошибка", f"Страница должна быть от 1 до {total_pages}")
             return
-
         self.current_page = page_input - 1
         self._show_page()
 
@@ -317,7 +317,6 @@ class STLManagerApp(ctk.CTk):
         self.lbl_page.configure(text=f"{self.current_page + 1} / {total_pages}")
         self.btn_prev.configure(state="normal" if self.current_page > 0 else "disabled")
         self.btn_next.configure(state="normal" if self.current_page < total_pages - 1 else "disabled")
-        # Обновляем поле ввода
         self.entry_page.delete(0, "end")
         self.entry_page.insert(0, str(self.current_page + 1))
 
@@ -339,6 +338,7 @@ class STLManagerApp(ctk.CTk):
                 self.cards_frame, fd,
                 on_open=self._open_location,
                 on_preview=self._open_preview,
+                on_render_single=self._render_single_file,   # передаём callback
                 font_family=FONT_FAMILY, font_size=FONT_SIZE
             )
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
@@ -383,7 +383,73 @@ class STLManagerApp(ctk.CTk):
         self._show_page()
         self._update_breadcrumbs()
 
-    # ---------- события (с детализацией прогресса) ----------
+    # ---------- рендеринг одного файла ----------
+    def _render_single_file(self, file_record):
+        """Запускает рендеринг одного файла в фоновом потоке."""
+        if not self.renderer:
+            return
+        self._set_state("rendering")
+        from ui.workers import RenderWorker, CancellationToken
+        token = CancellationToken()
+
+        files_to_render = [file_record]
+
+        def single_target(progress_cb, cancel_token):
+            # Создаём временный RenderWorker, передаём файлы напрямую
+            worker = RenderWorker.__new__(RenderWorker)
+            worker.renderer = self.renderer
+            worker.db = self.db
+            worker.project_id = self.current_project_id
+            # Используем метод, принимающий список файлов
+            return worker._batch_render(progress_cb, cancel_token, custom_files=files_to_render)
+
+        self.current_worker = BackgroundTask(
+            target=single_target,
+            cancellation_token=token,
+            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Превью", detail="Один файл")),
+            on_complete=lambda n: self.after(0, lambda: self._finish_render(n)),
+            on_error=lambda e: self.after(0, lambda: self._on_error(e))
+        )
+        self.current_worker.start()
+
+    # ---------- рендеринг страницы ----------
+    def start_render_page(self):
+        """Запускает рендеринг только для файлов на текущей странице."""
+        if not self.current_project_id or not self.all_files:
+            return
+        start = self.current_page * self.page_size
+        end = start + self.page_size
+        page_files = self.all_files[start:end]
+
+        # Фильтруем: только реально существующие файлы (не из архивов)
+        files_to_render = [f for f in page_files if not str(f[2]).startswith("[ARCHIVE]")]
+
+        if not files_to_render:
+            messagebox.showinfo("Информация", "На странице нет файлов для рендеринга")
+            return
+
+        self._set_state("rendering")
+        from ui.workers import RenderWorker, CancellationToken
+        token = CancellationToken()
+
+        def page_target(progress_cb, cancel_token):
+            worker = RenderWorker.__new__(RenderWorker)
+            worker.renderer = self.renderer
+            worker.db = self.db
+            worker.project_id = self.current_project_id
+            # Используем специальный метод для пакетной обработки
+            return worker._batch_render_files(progress_cb, cancel_token, files_to_render)
+
+        self.current_worker = BackgroundTask(
+            target=page_target,
+            cancellation_token=token,
+            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Превью страницы", detail=f"{c}/{t}")),
+            on_complete=lambda n: self.after(0, lambda: self._finish_render(n)),
+            on_error=lambda e: self.after(0, lambda: self._on_error(e))
+        )
+        self.current_worker.start()
+
+    # ---------- события (основные) ----------
     def select_folder(self):
         folder = None
         if platform.system() == 'Linux':
@@ -434,6 +500,7 @@ class STLManagerApp(ctk.CTk):
         self.lbl_progress.configure(text="Готово ✓")
         self.lbl_progress_detail.configure(text="")
         self.btn_render.configure(state="normal")
+        self.btn_render_page.configure(state="normal")
         self.btn_refresh_thumbs.configure(state="normal")
         self.btn_delete_missing.configure(state="normal")
         self._set_state("idle")
@@ -515,6 +582,7 @@ class STLManagerApp(ctk.CTk):
             self.btn_folder.configure(state="disabled")
             self.btn_scan.configure(state="disabled")
             self.btn_render.configure(state="disabled")
+            self.btn_render_page.configure(state="disabled")
             self.btn_refresh_thumbs.configure(state="disabled")
             self.btn_delete_missing.configure(state="disabled")
             self.btn_stop.configure(state="normal")
@@ -522,6 +590,7 @@ class STLManagerApp(ctk.CTk):
             self.btn_folder.configure(state="normal")
             self.btn_scan.configure(state="normal" if self.current_root_path else "disabled")
             self.btn_render.configure(state="normal" if self.current_project_id else "disabled")
+            self.btn_render_page.configure(state="normal" if self.current_project_id else "disabled")
             self.btn_refresh_thumbs.configure(state="normal" if self.current_project_id else "disabled")
             self.btn_delete_missing.configure(state="normal" if self.current_project_id else "disabled")
             self.btn_stop.configure(state="disabled")
@@ -579,6 +648,7 @@ class STLManagerApp(ctk.CTk):
                 self.lbl_folder.configure(text=f"📂 {root_path}")
                 self.btn_scan.configure(state="normal")
                 self.btn_render.configure(state="normal")
+                self.btn_render_page.configure(state="normal")
                 self.btn_refresh_thumbs.configure(state="normal")
                 self.btn_delete_missing.configure(state="normal")
                 self.refresh_tree()

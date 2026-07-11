@@ -126,8 +126,11 @@ class RenderWorker(BackgroundTask):
                 continue
         return None
 
-    def _batch_render(self, progress_cb, cancel_token):
-        files = self.db.get_files_for_project(self.project_id)
+    def _batch_render(self, progress_cb, cancel_token, custom_files=None):
+        if custom_files is not None:
+            files = custom_files
+        else:
+            files = self.db.get_files_for_project(self.project_id)
         total = len(files)
         rendered = 0
         from_existing = 0
@@ -386,6 +389,9 @@ class RenderWorker(BackgroundTask):
         logger.info(f"Готово: {rendered} (из существующих: {from_existing}), пропущено: {skipped}, ошибок: {errors}")
         return rendered
 
+    def _batch_render_files(self, progress_cb, cancel_token, files_to_render):
+        """Рендерит только указанный список записей (используется для одного файла или страницы)."""
+        return self._batch_render(progress_cb, cancel_token, custom_files=files_to_render)
 
 class RefreshThumbsWorker(BackgroundTask):
     """Пересоздаёт превью для файлов с заглушками."""
