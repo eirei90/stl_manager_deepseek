@@ -357,7 +357,7 @@ class STLManagerApp(ctk.CTk):
         )
 
     # ---------- обновление файлов ----------
-    def refresh_files(self):
+    def refresh_files(self, keep_page=False):
         if not self.current_project_id:
             for w in self.cards_frame.winfo_children():
                 w.destroy()
@@ -379,7 +379,14 @@ class STLManagerApp(ctk.CTk):
             max_faces=mx,
             relative_path=self.selected_path
         )
-        self.current_page = 0
+        if not keep_page:
+            self.current_page = 0
+        else:
+            # если текущая страница больше недоступна (например, после удаления файлов)
+            total_pages = max(1, (len(self.all_files) + self.page_size - 1) // self.page_size)
+            if self.current_page >= total_pages:
+                self.current_page = total_pages - 1
+
         self._show_page()
         self._update_breadcrumbs()
 
@@ -526,7 +533,7 @@ class STLManagerApp(ctk.CTk):
         self.lbl_progress.configure(text=f"Создано: {count} ✓")
         self.lbl_progress_detail.configure(text="")
         self._set_state("idle")
-        self.refresh_files()
+        self.refresh_files(keep_page=True)
 
     def start_refresh_thumbs(self):
         if not self.current_project_id: return
