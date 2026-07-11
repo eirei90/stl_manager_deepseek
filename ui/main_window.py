@@ -1,6 +1,7 @@
 """
 Главное окно приложения STL Manager.
-Содержит панель инструментов, дерево каталога, карточки файлов с пагинацией.
+Содержит панель инструментов, дерево каталога, карточки файлов с пагинацией,
+горячие клавиши, хлебные крошки и прогресс-бар с детализацией.
 """
 
 import customtkinter as ctk
@@ -75,10 +76,10 @@ class STLManagerApp(ctk.CTk):
         self.current_worker = None
         self.selected_path = None
 
-        # ---- пагинация ----
-        self.page_size = 50          # карточек на странице
-        self.current_page = 0        # текущая страница (0-индекс)
-        self.all_files = []          # полный список файлов после фильтрации
+        # пагинация
+        self.page_size = 50
+        self.current_page = 0
+        self.all_files = []
 
         self.title("STL Manager")
         self.geometry("1500x900")
@@ -87,6 +88,7 @@ class STLManagerApp(ctk.CTk):
         self._create_fonts()
         self._create_widgets()
         self._create_layout()
+        self._bind_hotkeys()
 
         self.after(300, self._load_last_project)
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -119,10 +121,18 @@ class STLManagerApp(ctk.CTk):
         self.lbl_folder = ctk.CTkLabel(self.toolbar, text="Папка не выбрана",
                                        anchor="w", font=self.normal_font)
 
+        # Хлебные крошки
+        self.breadcrumb_frame = ctk.CTkFrame(self, height=22, fg_color="transparent")
+        self.breadcrumb_frame.pack_propagate(False)
+        self._update_breadcrumbs()
+
         # Прогресс
-        self.progress = ctk.CTkProgressBar(self, height=10)
+        self.progress_frame = ctk.CTkFrame(self, height=30)
+        self.progress_frame.pack_propagate(False)
+        self.progress = ctk.CTkProgressBar(self.progress_frame, height=10, width=300)
         self.progress.set(0)
-        self.lbl_progress = ctk.CTkLabel(self, text="Готов", font=self.small_font)
+        self.lbl_progress = ctk.CTkLabel(self.progress_frame, text="Готов", font=self.small_font)
+        self.lbl_progress_detail = ctk.CTkLabel(self.progress_frame, text="", font=self.small_font, text_color="gray")
 
         # Фильтры
         self.filter_frame = ctk.CTkFrame(self, height=35)
@@ -165,12 +175,13 @@ class STLManagerApp(ctk.CTk):
 
     def _create_layout(self):
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(0, weight=0)
-        self.grid_rowconfigure(1, weight=0)
-        self.grid_rowconfigure(2, weight=0)
-        self.grid_rowconfigure(3, weight=0)   # пагинация
-        self.grid_rowconfigure(4, weight=1)   # основной контент
-        self.grid_rowconfigure(5, weight=0)   # статус
+        self.grid_rowconfigure(0, weight=0)  # тулбар
+        self.grid_rowconfigure(1, weight=0)  # хлебные крошки
+        self.grid_rowconfigure(2, weight=0)  # прогресс
+        self.grid_rowconfigure(3, weight=0)  # фильтры
+        self.grid_rowconfigure(4, weight=0)  # пагинация
+        self.grid_rowconfigure(5, weight=1)  # основной контент
+        self.grid_rowconfigure(6, weight=0)  # статус
 
         self.toolbar.grid(row=0, column=0, sticky="ew", padx=5, pady=5)
         self.toolbar.grid_columnconfigure(6, weight=1)
@@ -182,24 +193,86 @@ class STLManagerApp(ctk.CTk):
         self.btn_stop.grid(row=0, column=5, padx=3)
         self.lbl_folder.grid(row=0, column=6, padx=10, sticky="w")
 
-        self.progress.grid(row=1, column=0, sticky="ew", padx=10, pady=(5,0))
-        self.lbl_progress.grid(row=1, column=0, sticky="e", padx=15, pady=(5,0))
+        self.breadcrumb_frame.grid(row=1, column=0, sticky="ew", padx=5, pady=(0,2))
 
-        self.filter_frame.grid(row=2, column=0, sticky="ew", padx=5, pady=5)
-        self.page_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=2)
+        self.progress_frame.grid(row=2, column=0, sticky="ew", padx=10, pady=2)
+        self.progress.pack(side="left", padx=(0,10))
+        self.lbl_progress.pack(side="left")
+        self.lbl_progress_detail.pack(side="left", padx=10)
 
-        self.main_frame.grid(row=4, column=0, sticky="nsew", padx=5, pady=2)
+        self.filter_frame.grid(row=3, column=0, sticky="ew", padx=5, pady=5)
+        self.page_frame.grid(row=4, column=0, sticky="ew", padx=5, pady=2)
+
+        self.main_frame.grid(row=5, column=0, sticky="nsew", padx=5, pady=2)
         self.main_frame.grid_columnconfigure(1, weight=1)
         self.main_frame.grid_rowconfigure(0, weight=1)
         self.tree_panel.grid(row=0, column=0, sticky="ns", padx=(0,5))
         self.cards_frame.grid(row=0, column=1, sticky="nsew")
 
-        self.status.grid(row=5, column=0, sticky="ew", padx=5, pady=2)
+        self.status.grid(row=6, column=0, sticky="ew", padx=5, pady=2)
         self.status.configure(height=25)
+
+    # ---------- горячие клавиши ----------
+    def _bind_hotkeys(self):
+        self.bind_all("<Control-f>", lambda e: self.entry_search.focus_set())
+        self.bind_all("<Control-o>", lambda e: self.select_folder())
+        self.bind_all("<Control-Return>", lambda e: self._on_show_all())
+        self.bind_all("<BackSpace>", self._on_backspace)
+        self.bind_all("<F5>", lambda e: self.start_scan())
+
+    def _on_backspace(self, event):
+        if event.widget == self.entry_search:
+            return
+        self.tree_panel._navigate_up()
+
+    def _on_show_all(self):
+        self.tree_panel._show_all()
+
+    # ---------- хлебные крошки ----------
+    def _update_breadcrumbs(self, path=None):
+        for widget in self.breadcrumb_frame.winfo_children():
+            widget.destroy()
+
+        if not self.current_project_id or not self.selected_path:
+            ctk.CTkLabel(self.breadcrumb_frame, text="🏠 Корень",
+                        font=self.small_font, text_color="gray").pack(side="left", padx=5)
+            return
+
+        parts = self.selected_path.split('/')
+        ctk.CTkButton(self.breadcrumb_frame, text="🏠", command=self._go_to_root,
+                      width=28, height=20, font=self.small_font,
+                      fg_color="transparent", border_width=0).pack(side="left")
+        for i, part in enumerate(parts):
+            ctk.CTkLabel(self.breadcrumb_frame, text="›", font=self.small_font,
+                        text_color="gray").pack(side="left")
+            full = '/'.join(parts[:i+1])
+            if i == len(parts)-1:
+                ctk.CTkLabel(self.breadcrumb_frame, text=part[:25],
+                            font=ctk.CTkFont(family=FONT_FAMILY, size=FONT_SIZE-2, weight="bold"),
+                            text_color="white").pack(side="left")
+            else:
+                ctk.CTkButton(self.breadcrumb_frame, text=part[:25],
+                             command=lambda p=full: self._on_breadcrumb_click(p),
+                             width=len(part[:25])*8+10, height=20,
+                             font=self.small_font, fg_color="transparent",
+                             border_width=0, text_color="#4FC3F7").pack(side="left")
+
+    def _go_to_root(self):
+        self._on_tree_select(None)
+
+    def _on_breadcrumb_click(self, path):
+        self.tree_panel._navigate_to(path)
+        self._on_tree_select(path)
+
+    # ---------- прогресс-бар с детализацией ----------
+    def _update_progress(self, current, total, text, detail=""):
+        if total > 0:
+            self.progress.set(current / total)
+        self.lbl_progress.configure(text=f"{text}: {current}/{total}")
+        self.lbl_progress_detail.configure(text=detail)
 
     # ---------- пагинация ----------
     def _reset_and_refresh(self):
-        """Сброс страницы при изменении фильтров и обновление."""
         self.current_page = 0
         self.refresh_files()
 
@@ -221,7 +294,6 @@ class STLManagerApp(ctk.CTk):
         self.btn_next.configure(state="normal" if self.current_page < total_pages - 1 else "disabled")
 
     def _show_page(self):
-        """Отображает карточки текущей страницы."""
         for w in self.cards_frame.winfo_children():
             w.destroy()
 
@@ -256,14 +328,14 @@ class STLManagerApp(ctk.CTk):
             text=f"Всего: {total} | STL: {total-archives} | Архив: {archives} | Превью: {thumbs} | Готовых: {existing}"
         )
 
-    # ---------- загрузка файлов ----------
+    # ---------- обновление файлов ----------
     def refresh_files(self):
-        """Загружает полный список файлов и показывает первую страницу."""
         if not self.current_project_id:
             for w in self.cards_frame.winfo_children():
                 w.destroy()
             self.all_files = []
             self._update_pagination_controls()
+            self._update_breadcrumbs()
             return
 
         name = self.search_var.get().strip() or None
@@ -281,8 +353,9 @@ class STLManagerApp(ctk.CTk):
         )
         self.current_page = 0
         self._show_page()
+        self._update_breadcrumbs()
 
-    # ---------- события (без изменений) ----------
+    # ---------- события (с детализацией прогресса) ----------
     def select_folder(self):
         folder = None
         if platform.system() == 'Linux':
@@ -321,7 +394,7 @@ class STLManagerApp(ctk.CTk):
         self.current_worker = ScanWorker(
             self.scanner, self.current_root_path,
             cancellation_token=token,
-            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Сканирование")),
+            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Сканирование", detail=f"Файл {c} из {t}")),
             on_complete=lambda pid: self.after(0, lambda: self._finish_scan(pid)),
             on_error=lambda e: self.after(0, lambda: self._on_error(e))
         )
@@ -331,6 +404,7 @@ class STLManagerApp(ctk.CTk):
         self.current_project_id = project_id
         self.progress.set(1)
         self.lbl_progress.configure(text="Готово ✓")
+        self.lbl_progress_detail.configure(text="")
         self.btn_render.configure(state="normal")
         self.btn_refresh_thumbs.configure(state="normal")
         self.btn_delete_missing.configure(state="normal")
@@ -346,7 +420,7 @@ class STLManagerApp(ctk.CTk):
         self.current_worker = RenderWorker(
             self.renderer, self.db, self.current_project_id,
             cancellation_token=token,
-            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Превью")),
+            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Превью", detail=f"Обработано {c} из {t}")),
             on_complete=lambda n: self.after(0, lambda: self._finish_render(n)),
             on_error=lambda e: self.after(0, lambda: self._on_error(e))
         )
@@ -355,6 +429,7 @@ class STLManagerApp(ctk.CTk):
     def _finish_render(self, count):
         self.progress.set(1)
         self.lbl_progress.configure(text=f"Создано: {count} ✓")
+        self.lbl_progress_detail.configure(text="")
         self._set_state("idle")
         self.refresh_files()
 
@@ -368,7 +443,7 @@ class STLManagerApp(ctk.CTk):
         self.current_worker = RefreshThumbsWorker(
             self.renderer, self.db, self.current_project_id,
             cancellation_token=token,
-            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Обновление")),
+            on_progress=lambda c,t: self.after(0, lambda: self._update_progress(c,t,"Обновление", detail=f"Обновлено {c} из {t}")),
             on_complete=lambda n: self.after(0, lambda: self._finish_render(n)),
             on_error=lambda e: self.after(0, lambda: self._on_error(e))
         )
@@ -402,10 +477,6 @@ class STLManagerApp(ctk.CTk):
     def stop_operation(self):
         if self.current_worker:
             self.current_worker.cancel()
-
-    def _update_progress(self, current, total, text):
-        if total > 0: self.progress.set(current/total)
-        self.lbl_progress.configure(text=f"{text}: {current}/{total}")
 
     def _on_error(self, msg):
         messagebox.showerror("Ошибка", msg)
