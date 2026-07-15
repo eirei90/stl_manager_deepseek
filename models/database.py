@@ -5,6 +5,7 @@
 
 import sqlite3
 import logging
+import os
 from pathlib import Path
 from typing import Optional, List, Tuple
 
@@ -155,7 +156,8 @@ class Database:
                                name_filter: str = None,
                                min_faces: int = None,
                                max_faces: int = None,
-                               relative_path: str = None) -> List[Tuple]:
+                               relative_path: str = None,
+                               exclude_archive_files: bool = True) -> List[Tuple]:
         conn = self._get_connection()
         cursor = conn.cursor()
 
@@ -170,6 +172,10 @@ class Database:
         """
         params = [project_id]
 
+        # Исключаем файлы внутри архивов (оставляем только сами архивы)
+        if exclude_archive_files:
+            query += " AND (f.file_path NOT LIKE '[ARCHIVE]%' OR f.format_type = 'archive')"
+
         if name_filter:
             query += " AND f.file_name LIKE ?"
             params.append(f"%{name_filter}%")
@@ -180,62 +186,113 @@ class Database:
             query += " AND f.face_count <= ?"
             params.append(max_faces)
         if relative_path:
-            query += " AND f.relative_path LIKE ?"
-            params.append(f"{relative_path}%")
+            query += " AND (f.relative_path = ? OR f.relative_path LIKE ?)"
+            params.append(relative_path)
+            params.append(f"{relative_path}/%")
 
         query += " ORDER BY f.relative_path, f.file_name"
 
         cursor.execute(query, params)
         return cursor.fetchall()
 
-    def get_directory_tree(self, project_id: int) -> List[dict]:
-        """Возвращает структуру директорий для дерева."""
+    def get_directory_tree(self, project_id: int):
+        """Строит дерево, полностью дублирующее структуру файловой системы."""
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # Получаем все относительные пути
-        cursor.execute("""
-            SELECT DISTINCT relative_path
-            FROM files
-            WHERE project_id = ? AND relative_path IS NOT NULL AND relative_path != ''
-            ORDER BY relative_path
-        """, (project_id,))
-
-        paths = cursor.fetchall()
-        logger.info(f"Найдено {len(paths)} уникальных путей для проекта {project_id}")
-
-        if not paths:
+        # Получаем корневую папку
+        cursor.execute("SELECT root_path FROM projects WHERE id = ?", (project_id,))
+        root = cursor.fetchone()
+        if not root:
             return []
 
-        # Строим дерево
-        tree = {}
-        for (path,) in paths:
-            if not path or path == '.':
-                continue
-            parts = Path(path).parts
-            current = tree
-            for part in parts:
-                if part not in current:
-                    current[part] = {}
-                current = current[part]
+        root_path = root[0]
+        root_name = Path(root_path).name if root_path else "Проект"
 
-        def build_tree(node, current_path=''):
+        # Получаем файлы из БД
+        cursor.execute("""
+            SELECT file_name, relative_path, is_valid,
+                   CASE WHEN format_type = 'archive' THEN 2
+                        WHEN file_path LIKE '[ARCHIVE]%' THEN 1
+                        ELSE 0 END as file_type
+            FROM files WHERE project_id = ?
+        """, (project_id,))
+
+        files_by_dir = {}
+        for file_name, rel_path, is_valid, file_type in cursor.fetchall():
+            dir_key = rel_path if rel_path and rel_path != '.' else ''
+            if dir_key not in files_by_dir:
+                files_by_dir[dir_key] = []
+            prefix = "📦 " if file_type == 2 else "📄 "
+            if not is_valid:
+                prefix = "⚠ "
+            files_by_dir[dir_key].append({
+                'name': file_name,
+                'full_name': f"{prefix}{file_name}",
+                'is_valid': bool(is_valid),
+                'file_type': file_type
+            })
+
+        # Рекурсивно обходим файловую систему
+        def scan_directory(dir_path: str, current_rel: str):
             result = []
-            for name, children in sorted(node.items()):
-                full_path = f"{current_path}/{name}" if current_path else name
+
+            try:
+                items = sorted(os.listdir(dir_path))
+            except (PermissionError, FileNotFoundError):
+                return result
+
+            # Сначала папки
+            for item in items:
+                full_path = os.path.join(dir_path, item)
+                if not os.path.isdir(full_path):
+                    continue
+                if item.startswith('.') or item == '__pycache__':
+                    continue
+                if item == '.thumbs':
+                    continue
+
+                rel = f"{current_rel}/{item}" if current_rel else item
+                children = scan_directory(full_path, rel)
+
+                file_count = len(files_by_dir.get(rel, []))
+                for child in children:
+                    if child.get('is_dir'):
+                        file_count += child.get('file_count', 0)
+
                 result.append({
-                    'name': name,
-                    'path': full_path,
+                    'name': item,
+                    'path': rel,
                     'is_dir': True,
-                    'children': build_tree(children, full_path)
+                    'file_count': file_count,
+                    'children': children
                 })
+
+            # Затем файлы из БД
+            dir_files = files_by_dir.get(current_rel, [])
+            for f in sorted(dir_files, key=lambda x: x['name']):
+                result.append({
+                    'name': f['full_name'],
+                    'path': f"{current_rel}/{f['name']}" if current_rel else f['name'],
+                    'is_dir': False,
+                    'file_type': f.get('file_type', 0),
+                    'is_valid': f['is_valid'],
+                    'children': []
+                })
+
             return result
 
-        tree_list = build_tree(tree)
-        logger.info(f"Дерево построено: {len(tree_list)} корневых элементов")
-        return tree_list
+        # Сканируем корень
+        tree_children = scan_directory(root_path, '')
+        total_files = sum(len(v) for v in files_by_dir.values())
 
-    def close(self):
-        if self.conn:
-            self.conn.close()
-            self.conn = None
+        return [{
+            'name': f"📂 {root_name}",
+            'path': root_name,
+            'is_dir': True,
+            'file_count': total_files,
+            'children': tree_children
+        }]
+
+        logger.info(f"Дерево построено: корень '{root_name}', папок: {len(tree_children)}, файлов: {total_files}")
+        return root_node

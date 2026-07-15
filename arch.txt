@@ -1,24 +1,27 @@
 stl_manager/
-├── app.py                 # Точка входа
-├── requirements.txt       # Зависимости (добавлены py7zr, rarfile)
-├── stl_catalog.db         # SQLite БД
+├── app.py                      # Точка входа, запуск приложения
+├── requirements.txt            # Зависимости Python
+├── run.sh                      # Скрипт запуска с настройками окружения
+├── stl_catalog.db              # База данных SQLite (создаётся автоматически)
+├── stl_manager.log             # Лог-файл приложения
 │
 ├── models/
-│   ├── __init__.py
-│   └── database.py        # Без изменений
+│   ├── __init__.py             # Пакет моделей
+│   └── database.py             # Класс Database: SQLite, CRUD, дерево каталога
 │
 ├── services/
-│   ├── __init__.py
-│   ├── scanner.py         # Обновлён: рекурсивный обход + заглядывание в архивы
-│   ├── renderer.py        # Без изменений (vedo + fallback)
-│   └── archive_utils.py   # НОВЫЙ: работа с 7z и RAR
+│   ├── __init__.py             # Пакет сервисов
+│   ├── archive_utils.py        # Класс ArchiveExtractor: работа с 7z, RAR, ZIP
+│   ├── renderer.py             # Класс STLRenderer: рендеринг STL/OBJ в JPEG
+│   └── scanner.py              # Класс STLScanner: обход папок, поиск архивов, метаданные
 │
 ├── ui/
-│   ├── __init__.py
-│   ├── main_window.py     # Обновлён: поддержка кириллицы
-│   ├── cards.py           # Обновлён: поддержка кириллицы
-│   └── workers.py         # Без изменений
+│   ├── __init__.py             # Пакет интерфейса
+│   ├── cards.py                # Класс FileCard: карточка файла с превью и метаданными
+│   ├── main_window.py          # Класс STLManagerApp: главное окно приложения
+│   ├── tree_panel.py           # Класс TreePanel: дерево каталога (ttk.Treeview)
+│   └── workers.py              # Фоновые потоки: ScanWorker, RenderWorker, RefreshThumbsWorker
 │
 └── utils/
-    ├── __init__.py
-    └── logger.py          # Обновлён: UTF-8
+    ├── __init__.py             # Пакет утилит
+    └── logger.py               # Настройка логирования

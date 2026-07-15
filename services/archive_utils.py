@@ -25,7 +25,7 @@ except ImportError:
 
 class ArchiveExtractor:
 
-    TARGET = {'.stl'}
+    TARGET = {'.stl', '.obj'}
     ARCHIVES = {'.7z', '.rar', '.zip'}
 
     def __init__(self):
