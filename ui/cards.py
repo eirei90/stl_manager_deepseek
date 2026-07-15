@@ -1,6 +1,5 @@
 """
-Виджет карточки STL-файла.
-Показывает миниатюру, метаданные, иконку типа файла, контекстное меню с рендерингом.
+Виджет карточки STL-файла с поддержкой множественного выбора.
 """
 
 import customtkinter as ctk
@@ -12,7 +11,6 @@ import os
 import tkinter as tk
 
 logger = logging.getLogger(__name__)
-
 THUMB_SIZE = (200, 200)
 
 
@@ -20,14 +18,16 @@ class FileCard(ctk.CTkFrame):
     """Карточка одного STL/OBJ-файла."""
 
     def __init__(self, master, file_data, on_open=None, on_preview=None,
-                 on_render_single=None,   # новый callback
+                 on_render_single=None, on_move=None, on_selection_changed=None,
                  font_family="Arial", font_size=12, **kwargs):
         super().__init__(master, corner_radius=10, **kwargs)
 
         self.file_data = file_data
         self.on_open = on_open
         self.on_preview = on_preview
-        self.on_render_single = on_render_single   # сохраняем
+        self.on_render_single = on_render_single
+        self.on_move = on_move
+        self.on_selection_changed = on_selection_changed
 
         self.title_font = ctk.CTkFont(family=font_family, size=font_size, weight="bold")
         self.normal_font = ctk.CTkFont(family=font_family, size=font_size - 1)
@@ -50,10 +50,13 @@ class FileCard(ctk.CTkFrame):
         self.is_from_archive = str(self.file_path).startswith("[ARCHIVE]")
         self.file_ext = os.path.splitext(self.file_name)[1].lower()
 
+        self._selected = False
         self._photo = None
+        self._menu = None
         self._create_widgets()
 
     def _get_db(self):
+        """Получает объект БД из главного окна приложения."""
         widget = self.master
         while widget is not None:
             if hasattr(widget, 'db'):
@@ -121,11 +124,20 @@ class FileCard(ctk.CTkFrame):
 
         self.configure(width=240, height=400)
 
+        # Привязка кликов для множественного выбора
+        self.bind("<Button-1>", self._on_click)
+        self.bind("<Shift-Button-1>", self._on_shift_click)
+        self.bind("<Control-Button-1>", self._on_ctrl_click)
         self.bind("<Button-3>", self._show_context_menu)
+
         for child in self.winfo_children():
+            child.bind("<Button-1>", self._on_click)
+            child.bind("<Shift-Button-1>", self._on_shift_click)
+            child.bind("<Control-Button-1>", self._on_ctrl_click)
             child.bind("<Button-3>", self._show_context_menu)
 
     def _load_thumbnail(self):
+        """Загружает миниатюру."""
         try:
             if self.thumbnail_path and Path(str(self.thumbnail_path)).exists():
                 img = Image.open(str(self.thumbnail_path))
@@ -138,6 +150,7 @@ class FileCard(ctk.CTkFrame):
             self._show_placeholder()
 
     def _show_placeholder(self):
+        """Показывает заглушку если нет превью."""
         if self.is_from_archive:
             text = "📦\nАрхив"
         elif not self.is_valid:
@@ -146,70 +159,110 @@ class FileCard(ctk.CTkFrame):
             text = "🔷\nНет\nпревью"
         self.thumb_btn.configure(text=text, image=None, fg_color="gray20")
 
+    def _on_click(self, event):
+        """Обычный клик — сброс выделения и выделение только этого файла."""
+        if self.on_selection_changed:
+            self.on_selection_changed("clear_select", self)
+        # Не вызываем _select() здесь — main_window сам вызовет
+
+        if self.on_selection_changed:
+            self.on_selection_changed("clear_select", self)
+        self._select()
+
+    def _on_shift_click(self, event):
+        """Shift+Click — выделить диапазон."""
+        try:
+            if not self.winfo_exists():
+                return "break"
+        except tk.TclError:
+            return "break"
+
+        if self.on_selection_changed:
+            self.on_selection_changed("range_select", self)
+        return "break"
+
+    def _on_ctrl_click(self, event):
+        """Ctrl+Click — добавить/убрать из выделения."""
+        # Только уведомляем главное окно, оно само управляет выделением
+        if self.on_selection_changed:
+            self.on_selection_changed("toggle", self)
+        return "break"
+
+    def _toggle_selection(self):
+        """Переключить выделение (вызывается из main_window)."""
+        if self._selected:
+            self._deselect()
+        else:
+            self._select()
+
+    def _select(self):
+        """Выделить карточку."""
+        try:
+            if not self.winfo_exists():
+                return
+            self._selected = True
+            self.configure(fg_color="#1a3a1a", border_color="#4CAF50")
+        except tk.TclError:
+            pass
+
+    def _deselect(self):
+        """Снять выделение."""
+        try:
+            if not self.winfo_exists():
+                return
+            self._selected = False
+            border = "#FF9800" if self.is_from_archive else ("#4CAF50" if self.is_valid else "#F44336")
+            self.configure(fg_color="transparent", border_color=border)
+        except tk.TclError:
+            pass
+
+    @property
+    def is_selected(self):
+        return self._selected
+
     def _on_thumb_click(self):
+        """Открыть превью при клике на миниатюру."""
         if self.on_preview and self.thumbnail_path:
             self.on_preview(str(self.thumbnail_path))
 
     def _open_file(self):
+        """Открыть папку с файлом."""
         if self.on_open and self.file_path:
             self.on_open(str(self.file_path))
 
-    # ---------- контекстное меню ----------
     def _show_context_menu(self, event):
-        # Закрываем предыдущее меню, если висит
-        self._cleanup_menu()
-
+        """Показывает контекстное меню при правом клике."""
         menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
                        activebackground="#4a4a4a", activeforeground="white")
 
         if self.on_render_single:
             menu.add_command(label="🖼 Создать превью", command=self._render_this_file)
+        if self.on_move:
+            menu.add_command(label="📁 Переместить в...", command=self._move_file)
+        menu.add_separator()
         menu.add_command(label="🗑 Удалить файл и превью", command=self._delete_file)
         menu.add_command(label="🖼 Удалить только превью", command=self._delete_thumbnail)
         menu.add_command(label="📂 Открыть папку", command=self._open_file)
 
         menu.post(event.x_root, event.y_root)
-        self._menu = menu
 
-        # Вешаем обработчики на главное окно – любой клик закроет меню
-        top = self.winfo_toplevel()
-        self._menu_bind_ids = []
-
-        def on_click(e):
-            self._cleanup_menu()
-
-        # Сохраняем ID биндингов для последующего удаления
-        id1 = top.bind("<Button-1>", on_click, add="+")
-        id2 = top.bind("<Button-3>", on_click, add="+")
-        self._menu_bind_ids = [("<Button-1>", id1), ("<Button-3>", id2)]
-
-        # При уничтожении карточки тоже подчищаем
-        self.bind("<Destroy>", lambda e: self._cleanup_menu(), add="+")
-
-    def _cleanup_menu(self):
-        """Убирает меню и все связанные с ним глобальные биндинги."""
-        if hasattr(self, '_menu') and self._menu:
-            try:
-                self._menu.unpost()
-            except:
-                pass
-            self._menu = None
-
-        if hasattr(self, '_menu_bind_ids') and self._menu_bind_ids:
-            top = self.winfo_toplevel()
-            for event, bind_id in self._menu_bind_ids:
-                try:
-                    top.unbind(event, bind_id)
-                except:
-                    pass
-            self._menu_bind_ids = []
 
     def _render_this_file(self):
         """Запускает рендеринг текущего файла."""
         if self.on_render_single:
             self.on_render_single(self.file_data)
 
+    def _move_file(self):
+        """Запускает диалог перемещения для выделенных файлов."""
+        if self.on_move:
+            # Сначала выделяем текущую карточку (если не выделена)
+            if not self.is_selected:
+                self.on_selection_changed("clear_select", self)
+            # Вызываем без аргументов — пусть _show_move_dialog сам соберёт выделенные
+            self.on_move()
+
     def _delete_file(self):
+        """Удаляет файл и его превью."""
         from tkinter import messagebox
         ftype = "архив" if self.is_from_archive else "файл"
         if not messagebox.askyesno("Подтверждение",
@@ -220,14 +273,18 @@ class FileCard(ctk.CTkFrame):
         if self.thumbnail_path:
             thumb = Path(str(self.thumbnail_path))
             if thumb.exists():
-                try: thumb.unlink()
-                except: pass
+                try:
+                    thumb.unlink()
+                except:
+                    pass
 
         if not self.is_from_archive:
             fp = Path(str(self.file_path))
             if fp.exists():
-                try: fp.unlink()
-                except: pass
+                try:
+                    fp.unlink()
+                except:
+                    pass
 
         if db:
             try:
@@ -242,6 +299,7 @@ class FileCard(ctk.CTkFrame):
         self.destroy()
 
     def _delete_thumbnail(self):
+        """Удаляет только превью."""
         from tkinter import messagebox
         if not messagebox.askyesno("Подтверждение", f"Удалить превью?\n\n{self.file_name}"):
             return
@@ -250,8 +308,10 @@ class FileCard(ctk.CTkFrame):
         if self.thumbnail_path:
             thumb = Path(str(self.thumbnail_path))
             if thumb.exists():
-                try: thumb.unlink()
-                except: pass
+                try:
+                    thumb.unlink()
+                except:
+                    pass
 
         if db:
             try:

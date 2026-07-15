@@ -18,6 +18,8 @@ import re
 from PIL import Image
 from typing import Optional, Tuple
 from ui.workers import BackgroundTask, RenderWorker, CancellationToken
+import shutil
+from ui.move_dialog import MoveFileDialog
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -77,6 +79,9 @@ class STLManagerApp(ctk.CTk):
         self.current_root_path = None
         self.current_worker = None
         self.selected_path = None
+        self.selected_file_ids = set()
+        self.selected_file_data = []  # Храним полные данные выделенных файлов
+        self._last_clicked_card = None  # для Shift+Click
 
         # пагинация
         self.page_size = 50
@@ -338,7 +343,9 @@ class STLManagerApp(ctk.CTk):
                 self.cards_frame, fd,
                 on_open=self._open_location,
                 on_preview=self._open_preview,
-                on_render_single=self._render_single_file,   # передаём callback
+                on_render_single=self._render_single_file,
+                on_move=self._show_move_dialog,  # Без лямбды, просто метод  # Прямая ссылка на метод
+                on_selection_changed=self._on_card_selection_changed,
                 font_family=FONT_FAMILY, font_size=FONT_SIZE
             )
             card.grid(row=row, column=col, padx=8, pady=8, sticky="nsew")
@@ -355,6 +362,82 @@ class STLManagerApp(ctk.CTk):
         self.status.configure(
             text=f"Всего: {total} | STL: {total-archives} | Архив: {archives} | Превью: {thumbs} | Готовых: {existing}"
         )
+
+    def _on_cards_frame_right_click(self, event):
+        """Контекстное меню для выделенных файлов."""
+        selected = self._get_selected_files()
+        if not selected:
+            return
+
+        menu = tk.Menu(self, tearoff=0, bg="#2b2b2b", fg="white",
+                       activebackground="#4a4a4a", activeforeground="white")
+
+        if len(selected) == 1:
+            menu.add_command(
+                label=f"🖼 Создать превью",
+                command=lambda: self._render_single_file(selected[0])
+            )
+
+        menu.add_command(
+            label=f"📁 Переместить ({len(selected)})",
+            command=lambda: self._show_move_dialog(selected)
+        )
+        menu.add_command(
+            label=f"🗑 Удалить ({len(selected)})",
+            command=lambda: self._delete_files(selected)
+        )
+
+        menu.post(event.x_root, event.y_root)
+
+    def _delete_files(self, file_records):
+        """Удаляет выбранные файлы."""
+        if not file_records:
+            return
+
+        count = len(file_records)
+        if not messagebox.askyesno(
+            "Подтверждение",
+            f"Удалить {count} файлов и их превью?\n\nЭто действие нельзя отменить!"
+        ):
+            return
+
+        conn = self.db._get_connection()
+        cursor = conn.cursor()
+        deleted = 0
+
+        for record in file_records:
+            file_id = record[0]
+            file_path = record[2]
+            thumb_path = record[13] if len(record) > 13 else None
+
+            # Удаляем превью
+            if thumb_path and os.path.exists(str(thumb_path)):
+                try:
+                    os.remove(str(thumb_path))
+                except:
+                    pass
+
+            # Удаляем файл (если не архив)
+            if not str(file_path).startswith("[ARCHIVE]"):
+                p = Path(str(file_path))
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except:
+                        pass
+
+            # Удаляем из БД
+            cursor.execute("DELETE FROM thumbnails WHERE file_id = ?", (file_id,))
+            cursor.execute("DELETE FROM files WHERE id = ?", (file_id,))
+            deleted += 1
+
+        conn.commit()
+        self.db.update_project_stats(self.current_project_id)
+        self.selected_file_ids = set()
+        self.selected_file_data = []
+        self.refresh_tree()
+        self.refresh_files()
+        messagebox.showinfo("Готово", f"Удалено файлов: {deleted}")
 
     # ---------- обновление файлов ----------
     def refresh_files(self, keep_page=False):
@@ -700,6 +783,178 @@ class STLManagerApp(ctk.CTk):
                 logger.info("Нет сохранённых проектов")
         except Exception as e:
             logger.error(f"Ошибка загрузки проекта: {e}")
+
+    def _on_card_selection_changed(self, mode, card):
+        from ui.cards import FileCard
+
+        try:
+            if not card.winfo_exists():
+                return
+        except:
+            return
+
+        fid = card.file_id
+
+        if mode == "clear_select":
+            for w in self.cards_frame.winfo_children():
+                if isinstance(w, FileCard):
+                    try:
+                        if w.winfo_exists():
+                            w._deselect()
+                    except:
+                        pass
+            self.selected_file_ids = {fid}
+            self.selected_file_data = [card.file_data]  # Сохраняем данные
+            card._select()
+            self._last_clicked_card = card
+
+        elif mode == "toggle":
+            if fid in self.selected_file_ids:
+                self.selected_file_ids.discard(fid)
+                self.selected_file_data = [f for f in self.selected_file_data if f[0] != fid]
+                card._deselect()
+            else:
+                self.selected_file_ids.add(fid)
+                self.selected_file_data.append(card.file_data)  # Добавляем данные
+                card._select()
+
+        elif mode == "range_select":
+            all_cards = [w for w in self.cards_frame.winfo_children() if isinstance(w, FileCard)]
+
+            if self._last_clicked_card is None:
+                self.selected_file_ids = {fid}
+                card._select()
+            else:
+                try:
+                    idx1 = all_cards.index(self._last_clicked_card)
+                    idx2 = all_cards.index(card)
+                    start, end = min(idx1, idx2), max(idx1, idx2)
+
+                    for w in all_cards:
+                        try:
+                            if w.winfo_exists():
+                                w._deselect()
+                        except:
+                            pass
+                    self.selected_file_ids = set()
+
+                    for i in range(start, end + 1):
+                        try:
+                            if all_cards[i].winfo_exists():
+                                all_cards[i]._select()
+                                self.selected_file_ids.add(all_cards[i].file_id)
+                        except:
+                            pass
+                except ValueError:
+                    pass
+            self._last_clicked_card = card
+
+    def _get_selected_files(self):
+        result = self.selected_file_data
+        logger.info(f"_get_selected_files: id(self)={id(self)}, returning {len(result)} items")
+        return result
+
+    def _show_move_dialog(self, file_records=None):
+        logger.info(f"_show_move_dialog called with file_records={file_records}")
+        logger.info(f"  type={type(file_records)}, len={len(file_records) if file_records else 'N/A'}")
+
+        if file_records is None:
+            logger.info("  file_records is None, calling _get_selected_files")
+            file_records = self._get_selected_files()
+            logger.info(f"  after call: len={len(file_records)}")
+        else:
+            logger.info(f"  file_records already provided: {len(file_records)}")
+
+        # ВРЕМЕННАЯ ОТЛАДКА
+        logger.info(f"selected_file_data: {len(self.selected_file_data)} элементов")
+        for f in self.selected_file_data:
+            logger.info(f"  - {f[1]} (id={f[0]})")
+        logger.info(f"file_records: {len(file_records)} элементов")
+
+        if not file_records:
+            messagebox.showinfo("Информация", "Нет выбранных файлов. Используйте Ctrl+Клик для выделения.")
+            return
+
+        folders = self._get_all_folders()
+        if not folders:
+            messagebox.showinfo("Информация", "Нет доступных папок")
+            return
+
+        dialog = MoveFileDialog(self, folders, file_records)
+        self.wait_window(dialog)
+
+        if dialog.result is not None:
+            moved = 0
+            for record in file_records:
+                if self.move_file_to_folder(record, dialog.result):
+                    moved += 1
+            self.selected_file_ids = set()
+            self.refresh_files()
+            messagebox.showinfo("Готово", f"Перемещено файлов: {moved}/{len(file_records)}")
+
+    def _get_all_folders(self) -> list:
+        """Возвращает список всех папок проекта."""
+        folders = [("", "📂 Корень")]
+        if self.current_project_id:
+            conn = self.db._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT root_path FROM projects WHERE id = ?", (self.current_project_id,))
+            root = cursor.fetchone()
+            if root and os.path.exists(root[0]):
+                for dirpath, dirnames, _ in os.walk(root[0]):
+                    dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+                    for d in dirnames:
+                        full = os.path.join(dirpath, d)
+                        rel = os.path.relpath(full, root[0])
+                        folders.append((rel, f"📁 {rel}"))
+        return folders
+
+    def move_file_to_folder(self, file_record, target_folder: str):
+        """Перемещает файл/архив в указанную папку."""
+        file_id = file_record[0]
+        file_name = file_record[1]
+        file_path = file_record[2]
+
+        conn = self.db._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT root_path FROM projects WHERE id = ?", (self.current_project_id,))
+        root = cursor.fetchone()
+        if not root:
+            return False
+        root_path = root[0]
+        target_dir = os.path.join(root_path, target_folder) if target_folder else root_path
+        os.makedirs(target_dir, exist_ok=True)
+
+        if str(file_path).startswith("[ARCHIVE]"):
+            archive_name = file_path.replace("[ARCHIVE] ", "")
+            old_archive_path = None
+            for dirpath, _, filenames in os.walk(root_path):
+                if archive_name in filenames:
+                    old_archive_path = os.path.join(dirpath, archive_name)
+                    break
+            if old_archive_path:
+                new_archive_path = os.path.join(target_dir, archive_name)
+                try:
+                    shutil.move(old_archive_path, new_archive_path)
+                    logger.info(f"Архив перемещён: {old_archive_path} -> {new_archive_path}")
+                except Exception as e:
+                    logger.error(f"Ошибка перемещения архива: {e}")
+                    return False
+            cursor.execute("UPDATE files SET relative_path = ? WHERE id = ?", (target_folder, file_id))
+        else:
+            old_path = Path(file_path)
+            if old_path.exists():
+                new_path = os.path.join(target_dir, file_name)
+                try:
+                    shutil.move(str(old_path), new_path)
+                except Exception as e:
+                    logger.error(f"Ошибка перемещения: {e}")
+                    return False
+                cursor.execute("UPDATE files SET file_path = ?, relative_path = ? WHERE id = ?",
+                              (new_path, target_folder, file_id))
+
+        conn.commit()
+        return True
 
     def on_closing(self):
         if self.current_worker:
