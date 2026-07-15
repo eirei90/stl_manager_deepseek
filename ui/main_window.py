@@ -344,7 +344,7 @@ class STLManagerApp(ctk.CTk):
                 on_open=self._open_location,
                 on_preview=self._open_preview,
                 on_render_single=self._render_single_file,
-                on_move=self._show_move_dialog,  # Без лямбды, просто метод  # Прямая ссылка на метод
+                on_move=self._show_move_dialog,
                 on_selection_changed=self._on_card_selection_changed,
                 font_family=FONT_FAMILY, font_size=FONT_SIZE
             )
@@ -362,6 +362,16 @@ class STLManagerApp(ctk.CTk):
         self.status.configure(
             text=f"Всего: {total} | STL: {total-archives} | Архив: {archives} | Превью: {thumbs} | Готовых: {existing}"
         )
+
+        # ===== ИСПРАВЛЕНИЕ: Обновить скролл-регион Canvas'а =====
+        self.cards_frame.update_idletasks()
+        if hasattr(self.cards_frame, '_parent_canvas'):
+            self.cards_frame._parent_canvas.configure(
+                scrollregion=self.cards_frame._parent_canvas.bbox("all")
+            )
+            # Сброс скролла в начало при смене страницы/папки
+            self.cards_frame._parent_canvas.yview_moveto(0)
+        # =====================================================
 
     def _on_cards_frame_right_click(self, event):
         """Контекстное меню для выделенных файлов."""
